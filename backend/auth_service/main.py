@@ -17,8 +17,8 @@ from passlib.context import CryptContext
 import redis.asyncio as redis
 import httpx
 
-from ..shared.database.connection import get_db, create_tables
-from ..shared.models import User
+from shared.database.connection import get_db, create_tables
+from shared.models import User
 
 # Configuration
 SECRET_KEY = os.getenv("JWT_SECRET", "your-super-secret-jwt-key-change-in-production")

@@ -22,8 +22,8 @@ import nltk
 import openai
 from openai import OpenAI
 
-from ..shared.database.connection import get_db, create_tables
-from ..shared.models import ChatHistory, User, Device, Telemetry
+from shared.database.connection import get_db, create_tables
+from shared.models import ChatHistory, User, Device, Telemetry
 
 # Download NLTK data
 try:

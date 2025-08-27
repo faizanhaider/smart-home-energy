@@ -16,8 +16,8 @@ import redis.asyncio as redis
 import pandas as pd
 import numpy as np
 
-from ..shared.database.connection import get_db, create_tables
-from ..shared.models import Device, Telemetry, User
+from shared.database.connection import get_db, create_tables
+from shared.models import Device, Telemetry, User
 
 # Configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
