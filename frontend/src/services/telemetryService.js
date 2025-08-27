@@ -76,6 +76,28 @@ class TelemetryService {
   }
 
   /**
+   * Get telemetry data for a specific device with time filtering
+   * @param {string} deviceId - The device ID
+   * @param {number} hours - Number of hours to look back
+   * @returns {Promise<Array>} Array of telemetry data points
+   */
+  static async getDeviceTelemetryWithTimeFilter(deviceId, hours = 168) {
+    try {
+      const response = await fetch(`${TELEMETRY_SERVICE_URL}/device/${deviceId}?hours=${hours}`);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching device telemetry with time filter:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get device summary
    * @param {string} deviceId - The device ID
    * @returns {Promise<Object>} Device summary

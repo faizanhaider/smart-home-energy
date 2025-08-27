@@ -47,7 +47,11 @@ CREATE TABLE IF NOT EXISTS chat_history (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     question TEXT NOT NULL,
     response JSONB NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    intent VARCHAR(100),
+    confidence VARCHAR(10),
+    processing_time_ms VARCHAR(20),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create indexes for better query performance
@@ -58,7 +62,7 @@ CREATE INDEX IF NOT EXISTS idx_chat_history_user_id ON chat_history(user_id);
 
 -- Insert sample users
 INSERT INTO users (email, password_hash, first_name, last_name, role) VALUES
-('admin@smarthome.com', '$2b$10$rQZ8K9vX8K9vX8K9vX8K9O', 'Admin', 'User', 'admin'),
+('admin@smarthome.com', '$2b$12$tLytQuP1hkAXIJUmugcOa.RuEkk3/GrRz3HVfoc4x.r6iFM0MahqK', 'Admin', 'User', 'admin'), -- password: Test1234
 ('john@smarthome.com', '$2b$10$rQZ8K9vX8K9vX8K9vX8K9O', 'John', 'Doe', 'user'),
 ('jane@smarthome.com', '$2b$10$rQZ8K9vX8K9vX8K9vX8K9O', 'Jane', 'Smith', 'user')
 ON CONFLICT (email) DO NOTHING;

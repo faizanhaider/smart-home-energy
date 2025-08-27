@@ -371,7 +371,7 @@ from pydantic import BaseModel, Field
 class ChatQuery(BaseModel):
     """Chat query model."""
     question: str = Field(..., min_length=1, max_length=500, description="Natural language question")
-    user_id: Optional[str] = Field(None, description="User ID for authenticated queries")
+    user_id: Optional[uuid.UUID] = Field(None, description="User ID for authenticated queries")
 
 
 class ChatResponse(BaseModel):
@@ -786,8 +786,8 @@ async def process_chat_query(
     
     # Create chat history record
     chat_record = ChatHistory(
-        id=str(uuid.uuid4()),
-        user_id=chat_query.user_id or "anonymous",
+        id=uuid.uuid4(),
+        user_id=chat_query.user_id or uuid.uuid4(),
         question=chat_query.question,
         response=result.dict(),
         intent=intent_result["intent"],

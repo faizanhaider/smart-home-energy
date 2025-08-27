@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Devices from './pages/Devices';
+import DeviceDetails from './pages/DeviceDetails';
 import Chat from './pages/Chat';
 import Profile from './pages/Profile';
 import LoadingSpinner from './components/ui/LoadingSpinner';
@@ -67,6 +68,7 @@ function AppContent() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="devices" element={<Devices />} />
+        <Route path="devices/:deviceId" element={<DeviceDetails />} />
         <Route path="chat" element={<Chat />} />
         <Route path="profile" element={<Profile />} />
       </Route>

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import TelemetryService from '../services/telemetryService';
 
 const Devices = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [devices, setDevices] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -232,7 +234,10 @@ const Devices = () => {
                             Peak: {TelemetryService.formatPower(device.peak_power)}
                           </div>
                         </div>
-                        <button className="text-blue-600 hover:text-blue-900 text-sm font-medium">
+                        <button 
+                          onClick={() => navigate(`/devices/${device.device_id}`)}
+                          className="text-blue-600 hover:text-blue-900 text-sm font-medium"
+                        >
                           Details
                         </button>
                       </div>
