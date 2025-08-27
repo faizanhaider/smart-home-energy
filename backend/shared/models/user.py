@@ -2,6 +2,7 @@
 User model for authentication and user management.
 """
 
+from datetime import datetime
 from sqlalchemy import Column, String, Boolean, Text, func, UUID
 from sqlalchemy.orm import relationship
 from .base import BaseModel
@@ -44,4 +45,16 @@ class User(BaseModel):
         user_dict = super().to_dict()
         if not include_password:
             user_dict.pop("password_hash", None)
+        
+        # Ensure datetime objects are properly serialized
+        for key, value in user_dict.items():
+            if isinstance(value, datetime):
+                user_dict[key] = value.isoformat()
+        
         return user_dict
+    
+    def to_json(self, include_password: bool = False) -> str:
+        """Convert user to JSON string, optionally excluding password."""
+        import json
+        user_dict = self.to_dict(include_password)
+        return json.dumps(user_dict, default=str)

@@ -25,7 +25,15 @@ class BaseModel(Base, TimestampMixin):
     
     def to_dict(self) -> dict[str, Any]:
         """Convert model instance to dictionary."""
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        result = {}
+        for c in self.__table__.columns:
+            value = getattr(self, c.name)
+            # Convert UUID objects to strings for JSON serialization
+            if hasattr(value, 'hex'):  # Check if it's a UUID
+                result[c.name] = str(value)
+            else:
+                result[c.name] = value
+        return result
     
     def update(self, db: Session, **kwargs) -> "BaseModel":
         """Update model instance with new values."""

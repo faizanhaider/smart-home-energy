@@ -96,6 +96,12 @@ def get_password_hash(password: str) -> str:
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """Create JWT access token."""
     to_encode = data.copy()
+    
+    # Convert UUID objects to strings for JSON serialization
+    for key, value in to_encode.items():
+        if hasattr(value, 'hex'):  # Check if it's a UUID
+            to_encode[key] = str(value)
+    
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
@@ -128,9 +134,20 @@ async def get_current_user(
     # Check Redis cache first
     if redis_client:
         try:
-            cached_user = await redis_client.get(f"user:{user_id}")
+            # Convert user_id to string for Redis key
+            user_id_str = str(user_id) if hasattr(user_id, 'hex') else user_id
+            cached_user = await redis_client.get(f"user:{user_id_str}")
             if cached_user:
-                return User(**eval(cached_user))
+                import json
+                user_data = json.loads(cached_user)
+                # Convert string ID back to UUID if needed
+                if 'id' in user_data and isinstance(user_data['id'], str):
+                    try:
+                        from uuid import UUID
+                        user_data['id'] = UUID(user_data['id'])
+                    except ValueError:
+                        pass  # If UUID conversion fails, continue with string
+                return User(**user_data)
         except Exception:
             pass
     
@@ -142,10 +159,14 @@ async def get_current_user(
     # Cache user in Redis
     if redis_client:
         try:
+            # Use the safer JSON serialization method
+            user_json = user.to_json()
+            # Convert user_id to string for Redis key
+            user_id_str = str(user_id) if hasattr(user_id, 'hex') else user_id
             await redis_client.setex(
-                f"user:{user_id}", 
+                f"user:{user_id_str}", 
                 300,  # 5 minutes cache
-                str(user.to_dict())
+                user_json
             )
         except Exception:
             pass
@@ -161,7 +182,8 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
 
 
 # Pydantic models
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
+from uuid import UUID
 
 
 class UserCreate(BaseModel):
@@ -180,7 +202,7 @@ class UserLogin(BaseModel):
 
 class UserResponse(BaseModel):
     """User response model."""
-    id: str
+    id: UUID
     email: str
     first_name: Optional[str]
     last_name: Optional[str]
@@ -241,43 +263,61 @@ async def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
 @app.post("/login", response_model=Token)
 async def login_user(user_credentials: UserLogin, db: Session = Depends(get_db)):
     """Authenticate user and return JWT token."""
-    # Find user by email
-    user = db.query(User).filter(User.email == user_credentials.email).first()
-    if not user or not verify_password(user_credentials.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
-        )
-    
-    # Create access token
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.id}, expires_delta=access_token_expires
-    )
-    
-    # Store token in Redis for potential blacklisting
-    if redis_client:
-        try:
-            await redis_client.setex(
-                f"token:{access_token}",
-                ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-                user.id
+    try:
+        # Find user by email
+        user = db.query(User).filter(User.email == user_credentials.email).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
             )
-        except Exception:
-            pass
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    }
+        
+        if not verify_password(user_credentials.password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Inactive user"
+            )
+        
+        # Create access token
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.id}, expires_delta=access_token_expires
+        )
+        
+        # Store token in Redis for potential blacklisting
+        if redis_client:
+            try:
+                # Convert UUID to string for Redis storage
+                user_id_str = str(user.id) if hasattr(user.id, 'hex') else user.id
+                await redis_client.setex(
+                    f"token:{access_token}",
+                    ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+                    user_id_str
+                )
+            except Exception:
+                pass
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Login error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during login"
+        )
 
 
 @app.post("/logout")
@@ -314,7 +354,8 @@ async def update_user_profile(
     # Clear Redis cache
     if redis_client:
         try:
-            await redis_client.delete(f"user:{current_user.id}")
+            user_id_str = str(current_user.id) if hasattr(current_user.id, 'hex') else current_user.id
+            await redis_client.delete(f"user:{user_id_str}")
         except Exception:
             pass
     
@@ -352,9 +393,21 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """Handle general exceptions."""
+    import traceback
+    error_detail = str(exc)
+    error_traceback = traceback.format_exc()
+    
+    # Log the error for debugging
+    print(f"Unhandled exception: {error_detail}")
+    print(f"Traceback: {error_traceback}")
+    
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Internal server error", "status_code": 500}
+        content={
+            "detail": "Internal server error", 
+            "status_code": 500,
+            "error": error_detail
+        }
     )
 
 
