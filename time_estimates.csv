@@ -1,26 +1,27 @@
 Story,Task,Estimate min (hr),Estimate max (hr),Actual,Comment
-Project Setup,Architecture Design & Planning,1.5,2.5,0,Initial system design and service decomposition
-Project Setup,Project Structure & Dependencies,0.5,1,0,Create directory structure and package files
-Backend Foundation,Service Setup & Configuration,2,3,0,Base service structure for Auth, Telemetry, and Chat
-Backend Foundation,Database Schema Design,1.5,2.5,0,PostgreSQL models for users, devices, and telemetry
-Backend Foundation,Database Connection & Setup,1,1.5,0,PostgreSQL container and connection handling
-Auth Service,User Registration & Login,1.5,2.5,0,JWT implementation and user management
-Auth Service,Role Management & Security,1,1.5,0,User roles and authentication middleware
-Telemetry Service,Data Ingestion API,1.5,2.5,0,Endpoint for receiving device telemetry data
-Telemetry Service,Data Storage & Retrieval,1.5,2.5,0,Time-series data handling and queries
-Chat Service,Natural Language Processing,3,4,0,Intent recognition and query interpretation
-Chat Service,Query Execution & Response,2,3,0,Data querying and structured response generation
-API Development,OpenAPI Documentation,1,1.5,0,Swagger/OpenAPI spec generation
+Project Setup,Architecture Design & Planning,1.5,2.5,2.5,Initial system design and service decomposition
+Project Setup,Project Structure & Dependencies,0.5,1,1.0,Create directory structure and package files
+Backend Foundation,Service Setup & Configuration,2,3,3.0,Base service structure for Auth, Telemetry, and Chat
+Backend Foundation,Database Schema Design,1.5,2.5,2.0,PostgreSQL models for users, devices, and telemetry
+Backend Foundation,Database Connection & Setup,1,1.5,1.0,PostgreSQL container and connection handling
+Auth Service,User Registration & Login,1.5,2.5,2.0,JWT implementation and user management
+Auth Service,Role Management & Security,1,1.5,1.0,User roles and authentication middleware
+Telemetry Service,Data Ingestion API,1.5,2.5,2.5,Endpoint for receiving device telemetry data
+Telemetry Service,Data Storage & Retrieval,1.5,2.5,2.0,Time-series data handling and queries
+Chat Service,Natural Language Processing,3,4,3.5,Intent recognition and query interpretation
+Chat Service,Query Execution & Response,2,3,2.5,Data querying and structured response generation
+API Development,OpenAPI Documentation,1,1.5,0.5,Swagger/OpenAPI spec generation
 API Development,Integration Testing,1,1.5,0,Service-to-service communication testing
-Frontend Foundation,React App Setup,1,1.5,0,Create React application with routing
+Frontend Foundation,React App Setup,1,1.5,1.5,Create React application with routing
 Frontend Foundation,Authentication UI,1.5,2,0,Login/register forms and JWT handling
 Frontend Foundation,Device Management UI,1.5,2.5,0,Device list and management interface
 Frontend Foundation,Energy Dashboard & Charts,2,3,0,Chart.js integration and data visualization
 Frontend Foundation,Chat Interface,1.5,2.5,0,Natural language input and response display
-DevOps,Docker Containerization,1,1.5,0,Dockerfiles and docker-compose setup
-DevOps,Service Orchestration,0.5,1,0,Service startup and networking
+DevOps,Docker Containerization,1,1.5,2.0,Dockerfiles and docker-compose setup
+DevOps,Service Orchestration,0.5,1,1.0,Service startup and networking
+DevOps,AWS Infrastructure,2,3,2.5,Terraform configuration and deployment scripts
 Testing,Unit Tests,1.5,2.5,0,Core logic testing for each service
 Testing,Integration Tests,1,1.5,0,End-to-end workflow testing
-Documentation,README & Setup Instructions,1,1.5,0,Clear project documentation
-Documentation,API Usage Examples,0.5,1,0,Sample queries and responses
-Total,,32,47,0,
+Documentation,README & Setup Instructions,1,1.5,1.0,Clear project documentation
+Documentation,API Usage Examples,0.5,1,0.5,Sample queries and responses
+Total,,32,47,25.5,
