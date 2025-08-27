@@ -63,6 +63,13 @@ curl http://localhost:8003/health
 curl -X POST http://localhost:8002/query \
   -H "Content-Type: application/json" \
   -d '{"question": "How much energy did my fridge use yesterday?"}'
+
+# OpenAI integration test
+curl http://localhost:8002/openai/status
+curl http://localhost:8002/openai/sample-queries
+curl -X POST http://localhost:8002/openai/test \
+  -H "Content-Type: application/json" \
+  -d '{"test_query": "How much energy did my AC use last week?"}'
 ```
 
 ## 🌐 AWS Deployment Ready
@@ -92,20 +99,21 @@ cd deployment/aws
 
 ## 📊 Current Status
 
-### Completed (25.5 hours)
+### Completed (27.0 hours)
 - ✅ Project architecture and planning
 - ✅ Backend service foundation
 - ✅ Database models and connection layer
 - ✅ Authentication service with JWT
 - ✅ Telemetry service with data processing
-- ✅ Chat service with NLP capabilities
+- ✅ Chat service with advanced NLP and OpenAI integration
 - ✅ WebSocket service for real-time communication
 - ✅ React frontend foundation
 - ✅ Docker containerization
 - ✅ AWS infrastructure as code
 - ✅ Deployment automation
+- ✅ OpenAI integration with comprehensive testing
 
-### Remaining (16.5 hours estimated)
+### Remaining (15.0 hours estimated)
 - 🔄 Frontend UI components (Login, Dashboard, Devices, Chat)
 - 🔄 Integration testing between services
 - 🔄 Unit tests for core logic
@@ -135,9 +143,10 @@ cd deployment/aws
 1. **Microservices Architecture**: Clean separation of concerns with FastAPI services
 2. **Real-time Communication**: WebSocket integration for live updates and chat
 3. **Natural Language Processing**: AI-powered query interpretation for energy data
-4. **Scalable Infrastructure**: AWS-native deployment with auto-scaling capabilities
-5. **Developer Experience**: Comprehensive documentation and automated deployment
-6. **Production Ready**: Docker containers, health checks, and proper error handling
+4. **OpenAI Integration**: Advanced language understanding with cost analysis and efficiency insights
+5. **Scalable Infrastructure**: AWS-native deployment with auto-scaling capabilities
+6. **Developer Experience**: Comprehensive documentation and automated deployment
+7. **Production Ready**: Docker containers, health checks, and proper error handling
 
 ## 🔍 Testing Recommendations
 
