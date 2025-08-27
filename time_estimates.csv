@@ -8,8 +8,8 @@ Auth Service,User Registration & Login,1.5,2.5,2.0,JWT implementation and user m
 Auth Service,Role Management & Security,1,1.5,1.0,User roles and authentication middleware
 Telemetry Service,Data Ingestion API,1.5,2.5,2.5,Endpoint for receiving device telemetry data
 Telemetry Service,Data Storage & Retrieval,1.5,2.5,2.0,Time-series data handling and queries
-Chat Service,Natural Language Processing,3,4,3.5,Intent recognition and query interpretation
-Chat Service,Query Execution & Response,2,3,2.5,Data querying and structured response generation
+Chat Service,Natural Language Processing,3,4,4.0,Intent recognition, OpenAI integration, and advanced query interpretation
+Chat Service,Query Execution & Response,2,3,3.0,Data querying, cost analysis, efficiency insights, and structured response generation
 API Development,OpenAPI Documentation,1,1.5,0.5,Swagger/OpenAPI spec generation
 API Development,Integration Testing,1,1.5,0,Service-to-service communication testing
 Frontend Foundation,React App Setup,1,1.5,1.5,Create React application with routing
@@ -24,4 +24,4 @@ Testing,Unit Tests,1.5,2.5,0,Core logic testing for each service
 Testing,Integration Tests,1,1.5,0,End-to-end workflow testing
 Documentation,README & Setup Instructions,1,1.5,1.0,Clear project documentation
 Documentation,API Usage Examples,0.5,1,0.5,Sample queries and responses
-Total,,32,47,25.5,
+Total,,32,47,27.0,
