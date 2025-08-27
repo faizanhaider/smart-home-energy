@@ -1,0 +1,192 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+  
+  * {
+    @apply border-gray-200;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+  }
+  
+  .btn-primary {
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+  }
+  
+  .btn-secondary {
+    @apply btn bg-gray-100 text-gray-900 hover:bg-gray-200 focus:ring-gray-500;
+  }
+  
+  .btn-outline {
+    @apply btn border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-primary-500;
+  }
+  
+  .btn-ghost {
+    @apply btn text-gray-700 hover:bg-gray-100 focus:ring-gray-500;
+  }
+  
+  .input {
+    @apply block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500;
+  }
+  
+  .card {
+    @apply rounded-xl bg-white p-6 shadow-soft;
+  }
+  
+  .card-header {
+    @apply mb-4 border-b border-gray-100 pb-4;
+  }
+  
+  .card-title {
+    @apply text-lg font-semibold text-gray-900;
+  }
+  
+  .card-subtitle {
+    @apply text-sm text-gray-600;
+  }
+  
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  
+  .badge-success {
+    @apply badge bg-success-100 text-success-800;
+  }
+  
+  .badge-warning {
+    @apply badge bg-warning-100 text-warning-800;
+  }
+  
+  .badge-error {
+    @apply badge bg-error-100 text-error-800;
+  }
+  
+  .badge-info {
+    @apply badge bg-primary-100 text-primary-800;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .gradient-mask-b-0 {
+    mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+  }
+  
+  .gradient-mask-t-0 {
+    mask-image: linear-gradient(to top, black 0%, transparent 100%);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400;
+}
+
+/* Chart.js customizations */
+.chart-container {
+  @apply relative w-full h-full;
+}
+
+.chart-tooltip {
+  @apply bg-gray-900 text-white px-3 py-2 rounded-lg text-sm shadow-lg;
+}
+
+/* Loading animations */
+.loading-dots {
+  @apply inline-flex space-x-1;
+}
+
+.loading-dots > div {
+  @apply w-2 h-2 bg-current rounded-full animate-pulse;
+}
+
+.loading-dots > div:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.loading-dots > div:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Energy consumption indicators */
+.energy-low {
+  @apply text-success-600 bg-success-50 border-success-200;
+}
+
+.energy-medium {
+  @apply text-warning-600 bg-warning-50 border-warning-200;
+}
+
+.energy-high {
+  @apply text-error-600 bg-error-50 border-error-200;
+}
+
+/* Device status indicators */
+.device-online {
+  @apply w-2 h-2 bg-success-500 rounded-full;
+}
+
+.device-offline {
+  @apply w-2 h-2 bg-gray-400 rounded-full;
+}
+
+.device-warning {
+  @apply w-2 h-2 bg-warning-500 rounded-full;
+}
+
+/* Chat message styles */
+.chat-message {
+  @apply p-3 rounded-lg max-w-xs lg:max-w-md;
+}
+
+.chat-message-user {
+  @apply chat-message bg-primary-600 text-white ml-auto;
+}
+
+.chat-message-ai {
+  @apply chat-message bg-gray-100 text-gray-900;
+}
+
+.chat-message-system {
+  @apply chat-message bg-gray-200 text-gray-700 text-sm;
+}
