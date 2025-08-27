@@ -16,69 +16,147 @@ services:
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - smart-home-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smart_home_user -d smart_home_energy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # Auth Service
+  # Redis for caching and session management
+  redis:
+    image: redis:7-alpine
+    container_name: smart-home-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - smart-home-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Auth Service (FastAPI)
   auth-service:
     build:
-      context: ./services/auth-service
+      context: ./backend/auth_service
       dockerfile: Dockerfile
     container_name: smart-home-auth
     ports:
       - "8000:8000"
     environment:
-      NODE_ENV: development
+      ENVIRONMENT: development
       PORT: 8000
       DATABASE_URL: postgresql://smart_home_user:smart_home_password@postgres:5432/smart_home_energy
+      REDIS_URL: redis://redis:6379
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - smart-home-network
     volumes:
-      - ./services/auth-service:/app
-      - /app/node_modules
+      - ./backend/auth_service:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Telemetry Service
+  # Telemetry Service (FastAPI)
   telemetry-service:
     build:
-      context: ./services/telemetry-service
+      context: ./backend/telemetry_service
       dockerfile: Dockerfile
     container_name: smart-home-telemetry
     ports:
       - "8001:8001"
     environment:
-      NODE_ENV: development
+      ENVIRONMENT: development
       PORT: 8001
       DATABASE_URL: postgresql://smart_home_user:smart_home_password@postgres:5432/smart_home_energy
+      REDIS_URL: redis://redis:6379
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - smart-home-network
     volumes:
-      - ./services/telemetry-service:/app
-      - /app/node_modules
+      - ./backend/telemetry_service:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Chat Service
+  # Chat Service (FastAPI)
   chat-service:
     build:
-      context: ./services/chat-service
+      context: ./backend/chat_service
       dockerfile: Dockerfile
     container_name: smart-home-chat
     ports:
       - "8002:8002"
     environment:
-      NODE_ENV: development
+      ENVIRONMENT: development
       PORT: 8002
       DATABASE_URL: postgresql://smart_home_user:smart_home_password@postgres:5432/smart_home_energy
+      REDIS_URL: redis://redis:6379
       AUTH_SERVICE_URL: http://auth-service:8000
     depends_on:
-      - postgres
-      - auth-service
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
     networks:
       - smart-home-network
     volumes:
-      - ./services/chat-service:/app
+      - ./backend/chat_service:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # WebSocket Service (Node.js)
+  websocket-service:
+    build:
+      context: ./backend/websocket_service
+      dockerfile: Dockerfile
+    container_name: smart-home-websocket
+    ports:
+      - "8003:8003"
+    environment:
+      NODE_ENV: development
+      PORT: 8003
+      REDIS_URL: redis://redis:6379
+      AUTH_SERVICE_URL: http://auth-service:8000
+      TELEMETRY_SERVICE_URL: http://telemetry-service:8001
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      telemetry-service:
+        condition: service_healthy
+    networks:
+      - smart-home-network
+    volumes:
+      - ./backend/websocket_service:/app
       - /app/node_modules
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Frontend React App
   frontend:
@@ -92,15 +170,26 @@ services:
       REACT_APP_AUTH_API_URL: http://localhost:8000
       REACT_APP_TELEMETRY_API_URL: http://localhost:8001
       REACT_APP_CHAT_API_URL: http://localhost:8002
+      REACT_APP_WEBSOCKET_URL: ws://localhost:8003
     depends_on:
-      - auth-service
-      - telemetry-service
-      - chat-service
+      auth-service:
+        condition: service_healthy
+      telemetry-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+      websocket-service:
+        condition: service_healthy
     networks:
       - smart-home-network
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   postgres_data:
