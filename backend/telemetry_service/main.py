@@ -4,6 +4,7 @@ FastAPI Telemetry Service for Smart Home Energy Monitoring.
 
 import os
 import uuid
+import json
 from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Request
@@ -214,8 +215,33 @@ async def create_telemetry(
     if redis_client:
         try:
             await redis_client.delete(f"device:{telemetry_data.device_id}")
-        except Exception:
-            pass
+            
+            # Publish telemetry update to Redis for real-time WebSocket updates
+            device_info = await get_device_info(db, telemetry_data.device_id)
+            if device_info and device_info.user_id:
+                telemetry_update = {
+                    "device_id": str(telemetry_data.device_id),
+                    "user_id": str(device_info.user_id),
+                    "energy_watts": telemetry_data.energy_watts,
+                    "timestamp": telemetry_data.timestamp.isoformat()
+                }
+                
+                # Publish to device telemetry channel
+                await redis_client.publish(
+                    "device_telemetry", 
+                    json.dumps(telemetry_update)
+                )
+                
+                # Cache the latest telemetry data for the device
+                cache_key = f"device_telemetry:{telemetry_data.device_id}:{device_info.user_id}"
+                await redis_client.setex(
+                    cache_key, 
+                    3600,  # Cache for 1 hour
+                    json.dumps([telemetry_update])
+                )
+                
+        except Exception as e:
+            print(f"Warning: Redis operations failed: {e}")
     
     return db_telemetry
 
@@ -262,12 +288,38 @@ async def create_telemetry_batch(
     for record in telemetry_records:
         db.refresh(record)
     
-    # Invalidate device caches
+    # Invalidate device caches and publish updates
     if redis_client:
         try:
             await redis_client.delete(*[f"device:{device_id}" for device_id in device_ids])
-        except Exception:
-            pass
+            
+            # Publish telemetry updates for each device
+            for record in telemetry_records:
+                device_info = await get_device_info(db, record.device_id)
+                if device_info and device_info.user_id:
+                    telemetry_update = {
+                        "device_id": str(record.device_id),
+                        "user_id": str(device_info.user_id),
+                        "energy_watts": record.energy_watts,
+                        "timestamp": record.timestamp.isoformat()
+                    }
+                    
+                    # Publish to device telemetry channel
+                    await redis_client.publish(
+                        "device_telemetry", 
+                        json.dumps(telemetry_update)
+                    )
+                    
+                    # Cache the latest telemetry data for the device
+                    cache_key = f"device_telemetry:{record.device_id}:{device_info.user_id}"
+                    await redis_client.setex(
+                        cache_key, 
+                        3600,  # Cache for 1 hour
+                        json.dumps([telemetry_update])
+                    )
+                    
+        except Exception as e:
+            print(f"Warning: Redis operations failed: {e}")
     
     return telemetry_records
 

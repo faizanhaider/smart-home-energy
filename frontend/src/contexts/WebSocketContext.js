@@ -25,17 +25,21 @@ export const WebSocketProvider = ({ children }) => {
   const [chatMessages, setChatMessages] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [energyUpdates, setEnergyUpdates] = useState([]);
+  const [deviceTelemetry, setDeviceTelemetry] = useState(new Map()); // device_id -> telemetry data
   
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
+  const subscriptionsRef = useRef(new Set()); // Track active subscriptions
 
   // Message types
   const MESSAGE_TYPES = {
     CHAT: 'chat',
     ENERGY_UPDATE: 'energy_update',
     DEVICE_STATUS: 'device_status',
+    DEVICE_TELEMETRY: 'device_telemetry',
+    DEVICE_TELEMETRY_UPDATE: 'device_telemetry_update',
     SYSTEM_NOTIFICATION: 'system_notification',
     AUTHENTICATION: 'authentication',
     SUBSCRIBE: 'subscribe',
@@ -67,6 +71,16 @@ export const WebSocketProvider = ({ children }) => {
         subscribe('general');
         subscribe('energy_updates');
         subscribe('device_status');
+        
+        // Resubscribe to device telemetry if we have active subscriptions
+        if (subscriptionsRef.current.size > 0) {
+          subscriptionsRef.current.forEach(subscription => {
+            sendMessage({
+              type: MESSAGE_TYPES.SUBSCRIBE,
+              payload: JSON.parse(subscription)
+            });
+          });
+        }
       };
 
       wsRef.current.onmessage = (event) => {
@@ -165,6 +179,50 @@ export const WebSocketProvider = ({ children }) => {
     }
   }, []);
 
+  // Subscribe to device telemetry updates
+  const subscribeToDeviceTelemetry = useCallback((deviceId, userId) => {
+    if (!deviceId || !userId) return;
+    
+    const subscription = {
+      type: 'DEVICE_TELEMETRY',
+      device_id: deviceId,
+      user_id: userId
+    };
+    
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      sendMessage({
+        type: MESSAGE_TYPES.SUBSCRIBE,
+        payload: subscription
+      });
+      
+      // Track subscription
+      subscriptionsRef.current.add(JSON.stringify(subscription));
+      console.log('🔌 Subscribed to device telemetry:', deviceId);
+    }
+  }, []);
+
+  // Unsubscribe from device telemetry updates
+  const unsubscribeFromDeviceTelemetry = useCallback((deviceId, userId) => {
+    if (!deviceId || !userId) return;
+    
+    const subscription = {
+      type: 'DEVICE_TELEMETRY',
+      device_id: deviceId,
+      user_id: userId
+    };
+    
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      sendMessage({
+        type: MESSAGE_TYPES.UNSUBSCRIBE,
+        payload: subscription
+      });
+      
+      // Remove from tracked subscriptions
+      subscriptionsRef.current.delete(JSON.stringify(subscription));
+      console.log('🔌 Unsubscribed from device telemetry:', deviceId);
+    }
+  }, []);
+
   // Send message
   const sendMessage = useCallback((message) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -185,7 +243,9 @@ export const WebSocketProvider = ({ children }) => {
 
   // Handle incoming messages
   const handleMessage = useCallback((message) => {
+    
     switch (message.type) {
+      
       case MESSAGE_TYPES.CHAT:
         setChatMessages(prev => [...prev, message]);
         break;
@@ -196,6 +256,42 @@ export const WebSocketProvider = ({ children }) => {
         
       case MESSAGE_TYPES.DEVICE_STATUS:
         // Handle device status updates
+        break;
+        
+      case MESSAGE_TYPES.DEVICE_TELEMETRY:
+        // Handle device telemetry data
+        if (message.device_id && message.data) {
+          setDeviceTelemetry(prev => {
+            const newMap = new Map(prev);
+            newMap.set(message.device_id, message.data);
+            return newMap;
+          });
+        }
+        break;
+        
+      case MESSAGE_TYPES.DEVICE_TELEMETRY_UPDATE:
+        // Handle real-time device telemetry updates
+        if (message.device_id) {
+          // Dispatch custom event for components to listen to
+          const event = new CustomEvent('websocket-message', { detail: message });
+          window.dispatchEvent(event);
+          
+          // Update local state
+          setDeviceTelemetry(prev => {
+            const newMap = new Map(prev);
+            const existingData = newMap.get(message.device_id) || [];
+            const newDataPoint = {
+              timestamp: message.timestamp || new Date().toISOString(),
+              energy_watts: message.energy_watts,
+              device_id: message.device_id
+            };
+            
+            // Add new data point and keep only last 100 points
+            const updatedData = [...existingData, newDataPoint].slice(-100);
+            newMap.set(message.device_id, updatedData);
+            return newMap;
+          });
+        }
         break;
         
       case MESSAGE_TYPES.SYSTEM_NOTIFICATION:
@@ -242,12 +338,15 @@ export const WebSocketProvider = ({ children }) => {
     chatMessages,
     onlineUsers,
     energyUpdates,
+    deviceTelemetry,
     connect,
     disconnect,
     sendMessage,
     sendChatMessage,
     subscribe,
     unsubscribe,
+    subscribeToDeviceTelemetry,
+    unsubscribeFromDeviceTelemetry,
     MESSAGE_TYPES
   };
 

@@ -32,8 +32,9 @@ app.use(express.json());
 // Initialize WebSocket server
 const wss = new WebSocket.Server({ server });
 
-// Redis client
+// Redis clients
 let redisClient = null;
+let redisSubscriber = null;
 
 // Connection management
 const connections = new Map(); // Map to store active connections
@@ -44,6 +45,8 @@ const MESSAGE_TYPES = {
     CHAT: 'chat',
     ENERGY_UPDATE: 'energy_update',
     DEVICE_STATUS: 'device_status',
+    DEVICE_TELEMETRY: 'device_telemetry',
+    DEVICE_TELEMETRY_UPDATE: 'device_telemetry_update',
     SYSTEM_NOTIFICATION: 'system_notification',
     AUTHENTICATION: 'authentication',
     SUBSCRIBE: 'subscribe',
@@ -56,19 +59,53 @@ async function initializeRedis() {
         redisClient = Redis.createClient({ url: REDIS_URL });
         await redisClient.connect();
         console.log('✅ Redis connected successfully');
+
+        // Create Redis subscriber for listening to channels
+        redisSubscriber = redisClient.duplicate();
+        await redisSubscriber.connect();
         
         // Subscribe to Redis channels for real-time updates
-        await redisClient.subscribe('energy_updates', 'device_status', 'system_notifications');
-        
-        redisClient.on('message', (channel, message) => {
+        await redisSubscriber.subscribe('energy_updates', (message) => {
             try {
                 const data = JSON.parse(message);
-                broadcastToChannel(channel, data);
+                console.log('🔍 Redis message received: energy_updates', data);
+                broadcastToChannel('energy_updates', data);
             } catch (error) {
                 console.error('Error parsing Redis message:', error);
             }
         });
         
+        await redisSubscriber.subscribe('device_status', (message) => {
+            try {
+                const data = JSON.parse(message);
+                console.log('🔍 Redis message received: device_status', data);
+                broadcastToChannel('device_status', data);
+            } catch (error) {
+                console.error('Error parsing Redis message:', error);
+            }
+        });
+        
+        await redisSubscriber.subscribe('system_notifications', (message) => {
+            try {
+                const data = JSON.parse(message);
+                console.log('🔍 Redis message received: system_notifications', data);
+                broadcastToChannel('system_notifications', data);
+            } catch (error) {
+                console.error('Error parsing Redis message:', error);
+            }
+        });
+        
+        await redisSubscriber.subscribe('device_telemetry', (message) => {
+            try {
+                const data = JSON.parse(message);
+                console.log('🔍 Redis message received: device_telemetry', data);
+                broadcastToChannel('device_telemetry', data);
+                broadcastDeviceTelemetryUpdate(data.device_id, data.user_id, data);
+
+            } catch (error) {
+                console.error('Error parsing Redis message:', error);
+            }
+        });
     } catch (error) {
         console.error('⚠️  Redis connection failed:', error);
         redisClient = null;
@@ -154,7 +191,8 @@ wss.on('connection', (ws, req) => {
 // Message handling
 async function handleMessage(connection, data) {
     const { type, payload } = data;
-    
+    console.log('🔍 Message received:', type, payload);
+
     switch (type) {
         case MESSAGE_TYPES.AUTHENTICATION:
             await handleAuthentication(connection, payload);
@@ -171,6 +209,12 @@ async function handleMessage(connection, data) {
         case MESSAGE_TYPES.CHAT:
             await handleChatMessage(connection, payload);
             break;
+        
+        case MESSAGE_TYPES.DEVICE_TELEMETRY_UPDATE:
+            await handleDeviceTelemetryUpdate(connection, payload);
+            break;
+
+        
             
         default:
             sendMessage(connection.ws, {
@@ -226,56 +270,133 @@ async function handleAuthentication(connection, payload) {
 
 // Handle subscription
 async function handleSubscribe(connection, payload) {
-    const { room } = payload;
+    const { room, type, device_id, user_id } = payload;
     
-    if (!room) {
+    if (!room && !type) {
         sendMessage(connection.ws, {
             type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
-            message: 'Room name required for subscription',
+            message: 'Room name or subscription type required',
             timestamp: new Date().toISOString()
         });
         return;
     }
     
-    // Add to room
-    addToRoom(room, connection.id);
-    connection.subscriptions.add(room);
+    // Handle device telemetry subscription
+    if (type === 'DEVICE_TELEMETRY') {
+        if (!device_id || !user_id) {
+            sendMessage(connection.ws, {
+                type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
+                message: 'Device ID and User ID required for device telemetry subscription',
+                timestamp: new Date().toISOString()
+            });
+            return;
+        }
+        
+        const deviceRoom = `device_telemetry:${device_id}:${user_id}`;
+        addToRoom(deviceRoom, connection.id);
+        connection.subscriptions.add(deviceRoom);
+        
+        console.log(`📡 Connection ${connection.id} subscribed to device telemetry: ${device_id} for user: ${user_id}`);
+        
+        sendMessage(connection.ws, {
+            type: MESSAGE_TYPES.SUBSCRIBE,
+            message: `Subscribed to device telemetry for device ${device_id}`,
+            room: deviceRoom,
+            device_id: device_id,
+            timestamp: new Date().toISOString()
+        });
+        
+        // Send current device telemetry data if available
+        try {
+            const deviceData = await getDeviceTelemetryFromCache(device_id, user_id);
+            if (deviceData) {
+                sendMessage(connection.ws, {
+                    type: MESSAGE_TYPES.DEVICE_TELEMETRY,
+                    device_id: device_id,
+                    data: deviceData,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching device telemetry from cache:', error);
+        }
+        
+        return;
+    }
     
-    console.log(`📡 Connection ${connection.id} subscribed to room: ${room}`);
-    
-    sendMessage(connection.ws, {
-        type: MESSAGE_TYPES.SUBSCRIBE,
-        message: `Subscribed to ${room}`,
-        room: room,
-        timestamp: new Date().toISOString()
-    });
+    // Handle regular room subscription
+    if (room) {
+        // Add to room
+        addToRoom(room, connection.id);
+        connection.subscriptions.add(room);
+        
+        console.log(`📡 Connection ${connection.id} subscribed to room: ${room}`);
+        
+        sendMessage(connection.ws, {
+            type: MESSAGE_TYPES.SUBSCRIBE,
+            message: `Subscribed to ${room}`,
+            room: room,
+            timestamp: new Date().toISOString()
+        });
+    }
 }
 
 // Handle unsubscription
 async function handleUnsubscribe(connection, payload) {
-    const { room } = payload;
+    const { room, type, device_id, user_id } = payload;
     
-    if (!room) {
+    if (!room && !type) {
         sendMessage(connection.ws, {
             type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
-            message: 'Room name required for unsubscription',
+            message: 'Room name or subscription type required',
             timestamp: new Date().toISOString()
         });
         return;
     }
     
-    // Remove from room
-    removeFromRoom(room, connection.id);
-    connection.subscriptions.delete(room);
+    // Handle device telemetry unsubscription
+    if (type === 'DEVICE_TELEMETRY') {
+        if (!device_id || !user_id) {
+            sendMessage(connection.ws, {
+                type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
+                message: 'Device ID and User ID required for device telemetry unsubscription',
+                timestamp: new Date().toISOString()
+            });
+            return;
+        }
+        
+        const deviceRoom = `device_telemetry:${device_id}:${user_id}`;
+        removeFromRoom(deviceRoom, connection.id);
+        connection.subscriptions.delete(deviceRoom);
+        
+        console.log(`📡 Connection ${connection.id} unsubscribed from device telemetry: ${device_id} for user: ${user_id}`);
+        
+        sendMessage(connection.ws, {
+            type: MESSAGE_TYPES.UNSUBSCRIBE,
+            message: `Unsubscribed from device telemetry for device ${device_id}`,
+            room: deviceRoom,
+            device_id: device_id,
+            timestamp: new Date().toISOString()
+        });
+        
+        return;
+    }
     
-    console.log(`📡 Connection ${connection.id} unsubscribed from room: ${room}`);
-    
-    sendMessage(connection.ws, {
-        type: MESSAGE_TYPES.UNSUBSCRIBE,
-        message: `Unsubscribed from ${room}`,
-        room: room,
-        timestamp: new Date().toISOString()
-    });
+    // Handle regular room unsubscription
+    if (room) {
+        // Remove from room
+        removeFromRoom(room, connection.id);
+        connection.subscriptions.delete(room);
+        
+        console.log(`📡 Connection ${connection.id} unsubscribed from room: ${room}`);
+        
+        sendMessage(connection.ws, {
+            type: MESSAGE_TYPES.UNSUBSCRIBE,
+            message: `Unsubscribed from ${room}`,
+            room: room,
+            timestamp: new Date().toISOString()
+        });
+    }
 }
 
 // Handle chat messages
@@ -360,6 +481,43 @@ function broadcastToUser(userId, message) {
     broadcastToRoom(userRoom, message);
 }
 
+// Get device telemetry from Redis cache
+async function getDeviceTelemetryFromCache(deviceId, userId) {
+    if (!redisClient) return null;
+    
+    try {
+        const cacheKey = `device_telemetry:${deviceId}:${userId}`;
+        const cachedData = await redisClient.get(cacheKey);
+        return cachedData ? JSON.parse(cachedData) : null;
+    } catch (error) {
+        console.error('Error getting device telemetry from cache:', error);
+        return null;
+    }
+}
+
+// Broadcast device telemetry update to subscribed users
+async function broadcastDeviceTelemetryUpdate(deviceId, userId, telemetryData) {
+    const deviceRoom = `device_telemetry:${deviceId}:${userId}`;
+    
+    // Broadcast to device telemetry room
+    broadcastToRoom(deviceRoom, {
+        type: MESSAGE_TYPES.DEVICE_TELEMETRY_UPDATE,
+        device_id: deviceId,
+        user_id: userId,
+        energy_watts: telemetryData.energy_watts,
+        timestamp: telemetryData.timestamp || new Date().toISOString()
+    });
+    
+    // Also broadcast to general energy updates room
+    broadcastToRoom('energy_updates', {
+        type: MESSAGE_TYPES.ENERGY_UPDATE,
+        device_id: deviceId,
+        user_id: userId,
+        energy_watts: telemetryData.energy_watts,
+        timestamp: telemetryData.timestamp || new Date().toISOString()
+    });
+}
+
 // Utility functions
 function sendMessage(ws, message) {
     if (ws.readyState === WebSocket.OPEN) {
@@ -428,6 +586,18 @@ async function startServer() {
                 }
             });
         }, 30000); // Every 30 seconds
+        
+        // Cleanup Redis subscriber on process exit
+        process.on('SIGINT', async () => {
+            console.log('🔄 Shutting down WebSocket service...');
+            if (redisSubscriber) {
+                await redisSubscriber.quit();
+            }
+            if (redisClient) {
+                await redisClient.quit();
+            }
+            process.exit(0);
+        });
         
     } catch (error) {
         console.error('❌ Failed to start server:', error);

@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useWebSocket } from '../contexts/WebSocketContext';
 import TelemetryService from '../services/telemetryService';
 import {
   LineChart,
@@ -21,12 +22,18 @@ const DeviceDetails = () => {
   const { deviceId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isConnected, subscribeToDeviceTelemetry, unsubscribeFromDeviceTelemetry } = useWebSocket();
   const [device, setDevice] = useState(null);
   const [telemetryData, setTelemetryData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [timePeriod, setTimePeriod] = useState('7d'); // 7d, 24h, 1m, 1y
   const [chartType, setChartType] = useState('line'); // line, bar, area
+  const [isLiveMode, setIsLiveMode] = useState(true);
+  const [liveData, setLiveData] = useState([]);
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const wsSubscriptionRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
 
   // Load device details and telemetry data
   const loadDeviceData = useCallback(async () => {
@@ -61,6 +68,99 @@ const DeviceDetails = () => {
       setIsLoading(false);
     }
   }, [user?.id, deviceId, timePeriod]);
+
+  // WebSocket connection management
+  useEffect(() => {
+    if (isConnected && deviceId) {
+      setConnectionStatus('connected');
+      
+      // Subscribe to device telemetry updates
+      subscribeToDeviceTelemetry(deviceId, user?.id);
+      wsSubscriptionRef.current = { deviceId, userId: user?.id };
+      
+      console.log('🔌 WebSocket subscribed to device telemetry:', deviceId);
+    } else {
+      setConnectionStatus('disconnected');
+      
+      // Cleanup subscription on disconnect
+      if (wsSubscriptionRef.current) {
+        unsubscribeFromDeviceTelemetry(wsSubscriptionRef.current.deviceId, wsSubscriptionRef.current.userId);
+        wsSubscriptionRef.current = null;
+      }
+    }
+
+    return () => {
+      // Cleanup on unmount
+      if (wsSubscriptionRef.current) {
+        unsubscribeFromDeviceTelemetry(wsSubscriptionRef.current.deviceId, wsSubscriptionRef.current.userId);
+        wsSubscriptionRef.current = null;
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, [isConnected, deviceId, user?.id, subscribeToDeviceTelemetry, unsubscribeFromDeviceTelemetry]);
+
+  // Handle WebSocket messages for live updates
+  useEffect(() => {
+    const handleLiveUpdate = (message) => {
+      if (message.detail.type === "device_telemetry_update" && 
+          message.detail.device_id === deviceId && 
+          isLiveMode) {
+        
+        const newDataPoint = {
+          energy: parseFloat(message.detail.energy_watts || 0),
+          timestamp: message.detail.timestamp || new Date().toLocaleString(),
+          // Convert timestamp into date, hour, and day
+          ...(function() {
+            const ts = message.detail.timestamp ? new Date(message.detail.timestamp) : new Date();
+            return {
+              date: ts.toLocaleDateString(),
+              hour: ts.getHours(),
+              day: ts.getDate()
+            };
+          })()
+        };
+
+        setLiveData(prev => {
+          const updated = [...prev, newDataPoint];
+          // Keep only last 100 points for performance
+          return updated.slice(-100);
+        });
+
+        // Keep only data within current time period
+        const hours = getHoursFromPeriod(timePeriod);
+        const cutoff = new Date(Date.now() - (hours * 60 * 60 * 1000));
+
+        if (new Date(newDataPoint.timestamp) >= cutoff) {
+          // Update main telemetry data with live point
+          setTelemetryData(prev => {
+            return [...prev, newDataPoint];
+          });  
+        }
+      }
+    };
+
+    // Add message handler to WebSocket context
+    if (window.addEventListener) {
+      window.addEventListener('websocket-message', handleLiveUpdate);
+    }
+
+    return () => {
+      if (window.removeEventListener) {
+        window.removeEventListener('websocket-message', handleLiveUpdate);
+      }
+    };
+  }, [deviceId, isLiveMode, timePeriod]);
+
+  // Toggle live mode
+  const toggleLiveMode = useCallback(() => {
+    setIsLiveMode(prev => !prev);
+    if (!isLiveMode) {
+      // Clear live data when starting live mode
+      setLiveData([]);
+    }
+  }, [isLiveMode]);
 
   // Get hours from time period string
   const getHoursFromPeriod = (period) => {
@@ -192,6 +292,7 @@ const DeviceDetails = () => {
               dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
               activeDot={{ r: 6, stroke: '#3B82F6', strokeWidth: 2 }}
             />
+            
           </LineChart>
         </ResponsiveContainer>
       );
@@ -214,6 +315,7 @@ const DeviceDetails = () => {
             />
             <Legend />
             <Bar dataKey="energy" fill="#3B82F6" />
+            
           </BarChart>
         </ResponsiveContainer>
       );
@@ -242,6 +344,7 @@ const DeviceDetails = () => {
               fill="#3B82F6" 
               fillOpacity={0.3}
             />
+            
           </AreaChart>
         </ResponsiveContainer>
       );
@@ -322,6 +425,43 @@ const DeviceDetails = () => {
               {device.device_type || 'Smart Device'} • {device.location || 'Home'}
             </p>
           </div>
+        </div>
+      </div>
+
+
+
+      {/* WebSocket Status */}
+      <div className="mb-6">
+        <div className="flex items-center space-x-4">
+          <div className={`flex items-center space-x-2 ${
+            connectionStatus === 'connected' ? 'text-green-600' : 'text-red-600'
+          }`}>
+            <div className={`w-3 h-3 rounded-full ${
+              connectionStatus === 'connected' ? 'bg-green-500' : 'bg-red-500'
+            }`}></div>
+            <span className="text-sm font-medium">
+              {connectionStatus === 'connected' ? 'Live Connected' : 'Disconnected'}
+            </span>
+          </div>
+          
+          <button
+            onClick={toggleLiveMode}
+            disabled={connectionStatus !== 'connected'}
+            className={`px-3 py-1 text-sm rounded-md ${
+              isLiveMode
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            } disabled:bg-gray-400 disabled:cursor-not-allowed`}
+          >
+            {isLiveMode ? 'Stop Live' : 'Start Live'}
+          </button>
+          
+          {isLiveMode && (
+            <div className="flex items-center space-x-2 text-sm text-gray-600">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+              <span>Live updates active</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -434,11 +574,11 @@ const DeviceDetails = () => {
               </button>
               <button
                 onClick={() => setChartType('area')}
-                                 className={`px-3 py-2 text-sm rounded-md ${
-                   chartType === 'area'
-                     ? 'bg-blue-600 text-white'
-                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                 }`}
+                className={`px-3 py-2 text-sm rounded-md ${
+                  chartType === 'area'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
               >
                 Area
               </button>
@@ -453,6 +593,7 @@ const DeviceDetails = () => {
           Energy Consumption - {timePeriod === '24h' ? 'Last 24 Hours' : 
                                timePeriod === '7d' ? 'Last 7 Days' : 
                                timePeriod === '1m' ? 'Last Month' : 'Last Year'}
+          {isLiveMode && ' (Live Updates)'}
         </h3>
         {renderChart()}
       </div>
