@@ -1,41 +1,165 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import ChatService from '../services/chatService';
 
 const Chat = () => {
   const [message, setMessage] = useState('');
-  const [chatHistory] = useState([
-    {
-      id: 1,
-      type: 'user',
-      content: 'How much energy did my AC use last week?',
-      timestamp: '2 minutes ago'
-    },
-    {
-      id: 2,
-      type: 'assistant',
-      content: 'Your AC consumed 45.2 kWh last week, which is about $6.78 at current rates. This is 15% higher than the previous week, likely due to warmer weather.',
-      timestamp: '1 minute ago'
-    },
-    {
-      id: 3,
-      type: 'user',
-      content: 'What\'s my most efficient device?',
-      timestamp: 'Just now'
-    },
-    {
-      id: 4,
-      type: 'assistant',
-      content: 'Your refrigerator is your most efficient device, operating at 92% efficiency. It uses only 0.8 kW and has maintained consistent performance over the past month.',
-      timestamp: 'Just now'
+  const [chatHistory, setChatHistory] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const { user } = useAuth();
+
+  
+  const loadChatHistory = useCallback(async () => {
+    try {
+      const history = await ChatService.getChatHistory(user.id, 50);
+      
+      // Debug: Log the history structure
+      console.log('Chat history response:', history);
+      
+      // Ensure history is an array
+      if (!Array.isArray(history)) {
+        console.warn('Chat history is not an array:', history);
+        setChatHistory([]);
+        return;
+      }
+      
+      // Transform the chat history to match our frontend format
+      const transformedHistory = history.flatMap(chatRecord => {
+        // Skip invalid chat records
+        if (!chatRecord || !chatRecord.id || !chatRecord.question) {
+          console.warn('Invalid chat record:', chatRecord);
+          return [];
+        }
+
+        const userMessage = {
+          id: chatRecord.id,
+          type: 'user',
+          content: chatRecord.question,
+          timestamp: chatRecord.created_at
+        };
+
+        // Handle different response structures in chat history
+        let content = 'I processed your request but couldn\'t generate a response.';
+        let data = null;
+        let recommendations = null;
+
+        if (chatRecord.response && typeof chatRecord.response === 'object') {
+          content = chatRecord.response.summary || content;
+          data = chatRecord.response.data;
+          recommendations = chatRecord.response.recommendations;
+        } else if (chatRecord.summary) {
+          content = chatRecord.summary;
+          data = chatRecord.data;
+          recommendations = chatRecord.recommendations;
+        }
+
+        const assistantMessage = {
+          id: `${chatRecord.id}-response`,
+          type: 'assistant',
+          content: content,
+          timestamp: chatRecord.created_at,
+          data: data,
+          recommendations: recommendations
+        };
+
+        return [userMessage, assistantMessage];
+      });
+
+      setChatHistory(transformedHistory);
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+      // Set empty history on error
+      setChatHistory([]);
     }
-  ]);
+  }, [user]);
+
+  // Load chat history on component mount
+  useEffect(() => {
+    if (user?.id) {
+      // Check if chat service is available before loading history
+      ChatService.checkHealth().then(isHealthy => {
+        if (isHealthy) {
+          loadChatHistory();
+        } else {
+          console.warn('Chat service is not healthy, skipping history load');
+          setChatHistory([]);
+        }
+      }).catch(() => {
+        console.warn('Chat service health check failed, skipping history load');
+        setChatHistory([]);
+      });
+    }
+  }, [user, loadChatHistory]);
+
+
+  const sendMessage = async (question) => {
+    if (!question.trim()) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await ChatService.sendQuery(question, user?.id);
+      
+      // Debug: Log the response structure
+      console.log('Chat service response:', result);
+      
+      // Add the new message to chat history
+      const newMessage = {
+        id: result.id,
+        type: 'user',
+        content: question,
+        timestamp: new Date().toLocaleTimeString()
+      };
+
+              // Handle different response structures
+        let content = 'I processed your request but couldn\'t generate a response.';
+        let data = null;
+        let recommendations = null;
+
+        if (result.response && typeof result.response === 'object') {
+          content = result.response.summary || content;
+          data = result.response.data;
+          recommendations = result.response.recommendations;
+        } else if (result.summary) {
+          content = result.summary;
+          data = result.data;
+          recommendations = result.recommendations;
+        }
+
+        const assistantMessage = {
+          id: `${result.id}-response`,
+          type: 'assistant',
+          content: content,
+          timestamp: new Date().toLocaleTimeString(),
+          data: data,
+          recommendations: recommendations
+        };
+
+      setChatHistory(prev => [...prev, newMessage, assistantMessage]);
+      setMessage('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setError(error.message || 'Network error. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (message.trim()) {
-      // Here you would typically send the message to the chat service
-      console.log('Sending message:', message);
-      setMessage('');
+    if (message.trim() && !isLoading) {
+      sendMessage(message);
     }
+  };
+
+  const handleSampleQuestion = (question) => {
+    setMessage(question);
+    // Auto-send after a short delay to show the question being typed
+    setTimeout(() => {
+      sendMessage(question);
+    }, 100);
   };
 
   const getMessageStyle = (type) => {
@@ -44,12 +168,29 @@ const Chat = () => {
       : 'bg-gray-200 text-gray-900';
   };
 
+  const formatTimestamp = (timestamp) => {
+    if (typeof timestamp === 'string') {
+      return timestamp;
+    }
+    try {
+      return new Date(timestamp).toLocaleTimeString();
+    } catch {
+      return 'Just now';
+    }
+  };
+
   return (
     <div>
       <h1 className="text-2xl font-semibold text-gray-900">AI Energy Assistant</h1>
       <p className="mt-2 text-gray-600">
         Ask questions about your energy consumption in natural language
       </p>
+
+      {error && (
+        <div className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+          {error}
+        </div>
+      )}
 
       <div className="mt-6 bg-white rounded-lg shadow">
         {/* Chat Header */}
@@ -69,18 +210,47 @@ const Chat = () => {
 
         {/* Chat Messages */}
         <div className="px-6 py-4 h-96 overflow-y-auto">
-          <div className="space-y-4">
-            {chatHistory.map((chat) => (
-              <div key={chat.id} className="flex">
-                <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${getMessageStyle(chat.type)}`}>
-                  <p className="text-sm">{chat.content}</p>
-                  <p className={`text-xs mt-1 ${chat.type === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>
-                    {chat.timestamp}
-                  </p>
+          {chatHistory.length === 0 ? (
+            <div className="text-center text-gray-500 py-8">
+              <p>No messages yet. Start a conversation by asking about your energy usage!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {chatHistory.map((chat) => (
+                <div key={chat.id} className="flex">
+                  <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${getMessageStyle(chat.type)}`}>
+                    <p className="text-sm">{chat.content}</p>
+                    <p className={`text-xs mt-1 ${chat.type === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>
+                      {formatTimestamp(chat.timestamp)}
+                    </p>
+                    
+                    {/* Show recommendations if available */}
+                    {chat.type === 'assistant' && chat.recommendations && chat.recommendations.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-300">
+                        <p className="text-xs font-medium text-gray-700 mb-1">Suggestions:</p>
+                        <ul className="text-xs text-gray-600 space-y-1">
+                          {chat.recommendations.map((rec, index) => (
+                            <li key={index}>• {rec}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+              
+              {isLoading && (
+                <div className="flex">
+                  <div className="bg-gray-200 text-gray-900 max-w-xs lg:max-w-md px-4 py-2 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                      <p className="text-sm">Processing your question...</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Chat Input */}
@@ -92,12 +262,14 @@ const Chat = () => {
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Ask about your energy consumption..."
               className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={isLoading}
             />
             <button
               type="submit"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+              disabled={isLoading || !message.trim()}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
             >
-              Send
+              {isLoading ? 'Sending...' : 'Send'}
             </button>
           </form>
         </div>
@@ -117,8 +289,9 @@ const Chat = () => {
           ].map((question, index) => (
             <button
               key={index}
-              onClick={() => setMessage(question)}
-              className="text-left p-3 bg-gray-50 hover:bg-gray-100 rounded-md text-sm text-gray-700 transition-colors"
+              onClick={() => handleSampleQuestion(question)}
+              disabled={isLoading}
+              className="text-left p-3 bg-gray-50 hover:bg-gray-100 disabled:bg-gray-100 disabled:cursor-not-allowed rounded-md text-sm text-gray-700 transition-colors"
             >
               {question}
             </button>

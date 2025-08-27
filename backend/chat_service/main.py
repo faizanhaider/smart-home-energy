@@ -22,6 +22,10 @@ import nltk
 import openai
 from openai import OpenAI
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 from shared.database.connection import get_db, create_tables
 from shared.models import ChatHistory, User, Device, Telemetry
 
@@ -372,7 +376,7 @@ class ChatQuery(BaseModel):
 
 class ChatResponse(BaseModel):
     """Chat response model."""
-    id: str
+    id: uuid.UUID
     question: str
     response: Dict[str, Any]
     intent: str

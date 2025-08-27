@@ -93,8 +93,8 @@ class TelemetryBatch(BaseModel):
 
 class TelemetryResponse(BaseModel):
     """Telemetry response model."""
-    id: str
-    device_id: str
+    id: uuid.UUID
+    device_id: uuid.UUID
     timestamp: datetime
     energy_watts: float
     created_at: datetime
@@ -105,7 +105,7 @@ class TelemetryResponse(BaseModel):
 
 class DeviceSummary(BaseModel):
     """Device energy consumption summary."""
-    device_id: str
+    device_id: uuid.UUID
     device_name: str
     total_energy: float
     average_power: float
@@ -119,7 +119,7 @@ class DeviceSummary(BaseModel):
 
 class UserDevicesSummary(BaseModel):
     """Summary of all user devices."""
-    user_id: str
+    user_id: uuid.UUID
     total_energy: float
     average_power: float
     peak_power: float

@@ -193,6 +193,11 @@ class UserCreate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
 
+class UpdateProfile(BaseModel):
+    """User update model."""
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
 
 class UserLogin(BaseModel):
     """User login model."""
@@ -336,18 +341,17 @@ async def get_user_profile(current_user: User = Depends(get_current_active_user)
 
 @app.put("/profile", response_model=UserResponse)
 async def update_user_profile(
-    first_name: Optional[str] = None,
-    last_name: Optional[str] = None,
+    data: UpdateProfile,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Update user profile."""
     update_data = {}
-    if first_name is not None:
-        update_data["first_name"] = first_name
-    if last_name is not None:
-        update_data["last_name"] = last_name
-    
+    if data.first_name is not None:
+        update_data["first_name"] = data.first_name
+    if data.last_name is not None:
+        update_data["last_name"] = data.last_name
+
     if update_data:
         current_user.update(db, **update_data)
     

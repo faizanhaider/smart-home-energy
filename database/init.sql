@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS devices (
     device_type VARCHAR(100),
     location VARCHAR(255),
     is_active BOOLEAN DEFAULT true,
+    manufacturer VARCHAR(255),
+    model VARCHAR(255),
+    serial_number VARCHAR(255),
+    power_rating_watts VARCHAR(50),
+    description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -32,7 +37,8 @@ CREATE TABLE IF NOT EXISTS telemetry (
     device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
     energy_watts DECIMAL(10,2) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create chat_history table for storing user queries and responses
@@ -80,4 +86,7 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_devices_updated_at BEFORE UPDATE ON devices
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_telemetry_updated_at BEFORE UPDATE ON telemetry
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

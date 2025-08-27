@@ -3,33 +3,68 @@
 Smart Home Energy Monitoring - Telemetry Generation Script
 
 This script generates simulated telemetry data for testing the system.
-It creates 24 hours of one-minute interval energy consumption data for 5 devices.
+It creates 24 hours of one-minute interval energy consumption data for actual devices in the database.
 """
 
 import requests
 import random
 import time
 import uuid
+import psycopg2
 from datetime import datetime, timedelta
 import json
+
+def get_devices_from_db():
+    """Get actual devices from the database."""
+    DB_CONFIG = {
+        'host': 'localhost',
+        'port': 5432,
+        'database': 'smart_home_energy',
+        'user': 'smart_home_user',
+        'password': 'smart_home_password'
+    }
+    
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+        
+        # Get all active devices
+        cursor.execute("""
+            SELECT id, name, device_type 
+            FROM devices 
+            WHERE is_active = true
+        """)
+        
+        devices = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return devices
+    except Exception as e:
+        print(f"❌ Database error: {e}")
+        return []
 
 def generate_telemetry():
     """Generate and send telemetry data to the telemetry service."""
     
     # Configuration
-    TELEMETRY_API_URL = "http://localhost:8001/api/telemetry"
-    DEVICE_COUNT = 5
+    TELEMETRY_API_URL = "http://localhost:8001"  # Fixed endpoint
     HOURS = 24
     MINUTES_PER_HOUR = 60
     
     print(f"🚀 Starting telemetry generation...")
     print(f"📡 API Endpoint: {TELEMETRY_API_URL}")
-    print(f"🔌 Devices: {DEVICE_COUNT}")
     print(f"⏰ Duration: {HOURS} hours ({HOURS * MINUTES_PER_HOUR} data points)")
     
-    # Generate device IDs
-    devices = [str(uuid.uuid4()) for _ in range(DEVICE_COUNT)]
-    print(f"📱 Device IDs: {devices[:3]}...")  # Show first 3 IDs
+    # Get actual devices from database
+    devices = get_devices_from_db()
+    if not devices:
+        print("❌ No devices found in database")
+        return
+    
+    print(f"📱 Found {len(devices)} devices in database")
+    for device in devices:
+        print(f"  • {device[1]} ({device[2]}) - ID: {device[0]}")
     
     # Set start time to beginning of today
     start_of_today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -40,7 +75,8 @@ def generate_telemetry():
         'air_conditioner': (1000, 3500), # AC: 1000-3500W
         'light': (5, 100),              # Light: 5-100W
         'computer': (50, 300),          # Computer: 50-300W
-        'garage_door': (200, 500)       # Garage door: 200-500W
+        'garage_door': (200, 500),      # Garage door: 200-500W
+        'appliance': (500, 2000)        # General appliances: 500-2000W
     }
     
     successful_requests = 0
@@ -51,13 +87,12 @@ def generate_telemetry():
         timestamp = start_of_today + timedelta(minutes=minute)
         ts = timestamp.isoformat() + "Z"
         
-        for device_idx, device_id in enumerate(devices):
+        for device_id, device_name, device_type in devices:
             # Simulate realistic energy patterns
             hour = timestamp.hour
             
             # Base energy consumption based on device type
-            device_type = list(device_energy_ranges.keys())[device_idx % len(device_energy_ranges)]
-            min_watts, max_watts = device_energy_ranges[device_type]
+            min_watts, max_watts = device_energy_ranges.get(device_type, (100, 500))
             
             # Add time-based variations
             if 6 <= hour <= 9:  # Morning peak
@@ -76,9 +111,9 @@ def generate_telemetry():
             energy_watts *= energy_multiplier
             
             payload = {
-                "deviceId": device_id,
+                "device_id": str(device_id),  # Fixed field name
                 "timestamp": ts,
-                "energyWatts": round(energy_watts, 2)
+                "energy_watts": round(energy_watts, 2)  # Fixed field name
             }
             
             try:
