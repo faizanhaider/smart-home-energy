@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: smart-home-postgres
+    environment:
+      POSTGRES_DB: smart_home_energy
+      POSTGRES_USER: smart_home_user
+      POSTGRES_PASSWORD: smart_home_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - smart-home-network
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: smart-home-auth
+    ports:
+      - "8000:8000"
+    environment:
+      NODE_ENV: development
+      PORT: 8000
+      DATABASE_URL: postgresql://smart_home_user:smart_home_password@postgres:5432/smart_home_energy
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+    depends_on:
+      - postgres
+    networks:
+      - smart-home-network
+    volumes:
+      - ./services/auth-service:/app
+      - /app/node_modules
+
+  # Telemetry Service
+  telemetry-service:
+    build:
+      context: ./services/telemetry-service
+      dockerfile: Dockerfile
+    container_name: smart-home-telemetry
+    ports:
+      - "8001:8001"
+    environment:
+      NODE_ENV: development
+      PORT: 8001
+      DATABASE_URL: postgresql://smart_home_user:smart_home_password@postgres:5432/smart_home_energy
+    depends_on:
+      - postgres
+    networks:
+      - smart-home-network
+    volumes:
+      - ./services/telemetry-service:/app
+      - /app/node_modules
+
+  # Chat Service
+  chat-service:
+    build:
+      context: ./services/chat-service
+      dockerfile: Dockerfile
+    container_name: smart-home-chat
+    ports:
+      - "8002:8002"
+    environment:
+      NODE_ENV: development
+      PORT: 8002
+      DATABASE_URL: postgresql://smart_home_user:smart_home_password@postgres:5432/smart_home_energy
+      AUTH_SERVICE_URL: http://auth-service:8000
+    depends_on:
+      - postgres
+      - auth-service
+    networks:
+      - smart-home-network
+    volumes:
+      - ./services/chat-service:/app
+      - /app/node_modules
+
+  # Frontend React App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: smart-home-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_AUTH_API_URL: http://localhost:8000
+      REACT_APP_TELEMETRY_API_URL: http://localhost:8001
+      REACT_APP_CHAT_API_URL: http://localhost:8002
+    depends_on:
+      - auth-service
+      - telemetry-service
+      - chat-service
+    networks:
+      - smart-home-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
+
+networks:
+  smart-home-network:
+    driver: bridge
