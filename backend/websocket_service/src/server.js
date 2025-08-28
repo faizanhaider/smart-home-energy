@@ -115,6 +115,32 @@ async function verifyToken(token) {
     }
 }
 
+ // Helper function to handle authentication checks and update connection
+ async function authenticateConnection(connection, token) {
+    if (!token) {
+        sendMessage(connection.ws, {
+            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
+            message: 'Authentication token required',
+            timestamp: new Date().toISOString()
+        });
+        return false;
+    }
+    const decoded = await verifyToken(token);
+    if (!decoded) {
+        sendMessage(connection.ws, {
+            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
+            message: 'Invalid authentication token',
+            timestamp: new Date().toISOString()
+        });
+        return false;
+    }
+    // Update connection with user info
+    connection.userId = decoded.sub;
+    connection.userEmail = decoded.email;
+    connection.isAuthenticated = true;
+    return true;
+}
+
 // Connection handling
 wss.on('connection', (ws, req) => {
     const connectionId = uuidv4();
@@ -211,32 +237,10 @@ async function handleMessage(connection, data) {
 
 // Handle authentication
 async function handleAuthentication(connection, payload) {
-    const { token } = payload;
-    
-    if (!token) {
-        sendMessage(connection.ws, {
-            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
-            message: 'Authentication token required',
-            timestamp: new Date().toISOString()
-        });
+    const isAuthenticated = await authenticateConnection(connection, payload.token);
+    if (!isAuthenticated) {
         return;
     }
-    
-    const decoded = await verifyToken(token);
-    if (!decoded) {
-        sendMessage(connection.ws, {
-            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
-            message: 'Invalid authentication token',
-            timestamp: new Date().toISOString()
-        });
-        return;
-    }
-    
-    // Update connection with user info
-    connection.userId = decoded.sub;
-    connection.userEmail = decoded.email;
-    connection.isAuthenticated = true;
-    
     // Add to user room
     const userRoom = `user:${connection.userId}`;
     addToRoom(userRoom, connection.id);
@@ -254,42 +258,12 @@ async function handleAuthentication(connection, payload) {
 
 // Handle subscription
 async function handleSubscribe(connection, payload) {
-    const { token } = payload;
-    
-    if (!token) {
-        sendMessage(connection.ws, {
-            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
-            message: 'Authentication token required',
-            timestamp: new Date().toISOString()
-        });
-        return;
-    }
-    
-    const decoded = await verifyToken(token);
-    if (!decoded) {
-        sendMessage(connection.ws, {
-            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
-            message: 'Invalid authentication token',
-            timestamp: new Date().toISOString()
-        });
-        return;
-    }
-    
-    // Update connection with user info
-    connection.userId = decoded.sub;
-    connection.userEmail = decoded.email;
-    connection.isAuthenticated = true;
 
-    // Check if user is authenticated
-    if (!connection.isAuthenticated) {
-        sendMessage(connection.ws, {
-            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
-            message: 'Authentication required for subscriptions',
-            timestamp: new Date().toISOString()
-        });
+    const isAuthenticated = await authenticateConnection(connection, payload.token);
+    if (!isAuthenticated) {
         return;
     }
-    
+
     const { room, type, device_id, user_id } = payload;
     
     if (!room && !type) {
@@ -363,32 +337,15 @@ async function handleSubscribe(connection, payload) {
 
 // Handle unsubscription
 async function handleUnsubscribe(connection, payload) {
+
     const { token } = payload;
-    
-    if (!token) {
-        sendMessage(connection.ws, {
-            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
-            message: 'Authentication token required',
-            timestamp: new Date().toISOString()
-        });
+   
+    const isAuthenticated = await authenticateConnection(connection, token);
+   
+    if (!isAuthenticated) {
         return;
     }
-    
-    const decoded = await verifyToken(token);
-    if (!decoded) {
-        sendMessage(connection.ws, {
-            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
-            message: 'Invalid authentication token',
-            timestamp: new Date().toISOString()
-        });
-        return;
-    }
-    
-    // Update connection with user info
-    connection.userId = decoded.sub;
-    connection.userEmail = decoded.email;
-    connection.isAuthenticated = true;
-    
+        
     // Check if user is authenticated
     if (!connection.isAuthenticated) {
         sendMessage(connection.ws, {
