@@ -3,7 +3,28 @@
  * Handles communication with the chat service backend
  */
 
-const CHAT_SERVICE_URL = process.env.REACT_APP_CHAT_SERVICE_URL || 'http://localhost:8002';
+import axios from 'axios';
+
+const CHAT_SERVICE_URL = process.env.REACT_APP_CHAT_API_URL || 'http://localhost:8002';
+
+// Helper function to get auth token from localStorage
+const getAuthToken = () => {
+  return localStorage.getItem('token');
+};
+
+// Helper function to create axios instance with auth headers
+const createAuthenticatedRequest = () => {
+  const token = getAuthToken();
+  const config = {
+    headers: {}
+  };
+  
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  
+  return config;
+};
 
 class ChatService {
   /**
@@ -14,23 +35,15 @@ class ChatService {
    */
   static async sendQuery(question, userId = null) {
     try {
-      const response = await fetch(`${CHAT_SERVICE_URL}/query`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          question: question,
-          user_id: userId
-        })
-      });
+      const config = createAuthenticatedRequest();
+      config.headers['Content-Type'] = 'application/json';
+      
+      const response = await axios.post(`${CHAT_SERVICE_URL}/query`, {
+        question: question,
+        user_id: userId
+      }, config);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
+      return response.data;
     } catch (error) {
       console.error('Error sending chat query:', error);
       throw error;
@@ -46,16 +59,12 @@ class ChatService {
    */
   static async getChatHistory(userId, limit = 50, offset = 0) {
     try {
-      const response = await fetch(
-        `${CHAT_SERVICE_URL}/history?user_id=${userId}&limit=${limit}&offset=${offset}`
+      const response = await axios.get(
+        `${CHAT_SERVICE_URL}/history?user_id=${userId}&limit=${limit}&offset=${offset}`,
+        createAuthenticatedRequest()
       );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
+      return response.data;
     } catch (error) {
       console.error('Error fetching chat history:', error);
       throw error;
@@ -68,14 +77,12 @@ class ChatService {
    */
   static async getSupportedIntents() {
     try {
-      const response = await fetch(`${CHAT_SERVICE_URL}/intents`);
+      const response = await axios.get(
+        `${CHAT_SERVICE_URL}/intents`,
+        createAuthenticatedRequest()
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
+      return response.data;
     } catch (error) {
       console.error('Error fetching supported intents:', error);
       throw error;
@@ -88,8 +95,8 @@ class ChatService {
    */
   static async checkHealth() {
     try {
-      const response = await fetch(`${CHAT_SERVICE_URL}/health`);
-      return response.ok;
+      const response = await axios.get(`${CHAT_SERVICE_URL}/health`);
+      return response.status === 200;
     } catch (error) {
       console.error('Error checking chat service health:', error);
       return false;

@@ -209,7 +209,19 @@ const Chat = () => {
         </div>
 
         {/* Chat Messages */}
-        <div className="px-6 py-4 h-96 overflow-y-auto">
+        {/* Chat Messages with auto-scroll to bottom on new message */}
+        <div
+          className="px-6 py-4 h-96 overflow-y-auto"
+          ref={el => {
+            // Attach ref for scrolling
+            if (!el) return;
+            // Scroll to bottom on mount and when chatHistory or isLoading changes
+            if (window._chatScrollTimeout) clearTimeout(window._chatScrollTimeout);
+            window._chatScrollTimeout = setTimeout(() => {
+              el.scrollTop = el.scrollHeight;
+            }, 50);
+          }}
+        >
           {chatHistory.length === 0 ? (
             <div className="text-center text-gray-500 py-8">
               <p>No messages yet. Start a conversation by asking about your energy usage!</p>

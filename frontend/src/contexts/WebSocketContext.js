@@ -19,13 +19,9 @@ export const useWebSocket = () => {
 
 // WebSocket provider component
 export const WebSocketProvider = ({ children }) => {
-  const { user, token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState('disconnected');
-  const [chatMessages, setChatMessages] = useState([]);
-  const [onlineUsers, setOnlineUsers] = useState([]);
-  const [energyUpdates, setEnergyUpdates] = useState([]);
-  const [deviceTelemetry, setDeviceTelemetry] = useState(new Map()); // device_id -> telemetry data
+  const [, setConnectionStatus] = useState('disconnected');
   
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
@@ -35,10 +31,6 @@ export const WebSocketProvider = ({ children }) => {
 
   // Message types
   const MESSAGE_TYPES = {
-    CHAT: 'chat',
-    ENERGY_UPDATE: 'energy_update',
-    DEVICE_STATUS: 'device_status',
-    DEVICE_TELEMETRY: 'device_telemetry',
     DEVICE_TELEMETRY_UPDATE: 'device_telemetry_update',
     SYSTEM_NOTIFICATION: 'system_notification',
     AUTHENTICATION: 'authentication',
@@ -66,11 +58,6 @@ export const WebSocketProvider = ({ children }) => {
         if (isAuthenticated && token) {
           authenticate();
         }
-        
-        // Subscribe to default channels
-        subscribe('general');
-        subscribe('energy_updates');
-        subscribe('device_status');
         
         // Resubscribe to device telemetry if we have active subscriptions
         if (subscriptionsRef.current.size > 0) {
@@ -159,34 +146,15 @@ export const WebSocketProvider = ({ children }) => {
     }
   }, [token]);
 
-  // Subscribe to a channel
-  const subscribe = useCallback((room) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      sendMessage({
-        type: MESSAGE_TYPES.SUBSCRIBE,
-        payload: { room }
-      });
-    }
-  }, []);
-
-  // Unsubscribe from a channel
-  const unsubscribe = useCallback((room) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      sendMessage({
-        type: MESSAGE_TYPES.UNSUBSCRIBE,
-        payload: { room }
-      });
-    }
-  }, []);
-
   // Subscribe to device telemetry updates
   const subscribeToDeviceTelemetry = useCallback((deviceId, userId) => {
     if (!deviceId || !userId) return;
     
     const subscription = {
-      type: 'DEVICE_TELEMETRY',
+      type: 'device_telemetry_update',
       device_id: deviceId,
-      user_id: userId
+      user_id: userId,
+      token: token
     };
     
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -206,9 +174,10 @@ export const WebSocketProvider = ({ children }) => {
     if (!deviceId || !userId) return;
     
     const subscription = {
-      type: 'DEVICE_TELEMETRY',
+      type: 'device_telemetry_update',
       device_id: deviceId,
-      user_id: userId
+      user_id: userId,
+      token: token
     };
     
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -233,64 +202,15 @@ export const WebSocketProvider = ({ children }) => {
     }
   }, []);
 
-  // Send chat message
-  const sendChatMessage = useCallback((message, room = 'general') => {
-    sendMessage({
-      type: MESSAGE_TYPES.CHAT,
-      payload: { message, room }
-    });
-  }, [sendMessage]);
-
   // Handle incoming messages
-  const handleMessage = useCallback((message) => {
-    
+  const handleMessage = useCallback((message) => {  
     switch (message.type) {
-      
-      case MESSAGE_TYPES.CHAT:
-        setChatMessages(prev => [...prev, message]);
-        break;
-        
-      case MESSAGE_TYPES.ENERGY_UPDATE:
-        setEnergyUpdates(prev => [message, ...prev.slice(0, 49)]); // Keep last 50
-        break;
-        
-      case MESSAGE_TYPES.DEVICE_STATUS:
-        // Handle device status updates
-        break;
-        
-      case MESSAGE_TYPES.DEVICE_TELEMETRY:
-        // Handle device telemetry data
-        if (message.device_id && message.data) {
-          setDeviceTelemetry(prev => {
-            const newMap = new Map(prev);
-            newMap.set(message.device_id, message.data);
-            return newMap;
-          });
-        }
-        break;
-        
       case MESSAGE_TYPES.DEVICE_TELEMETRY_UPDATE:
         // Handle real-time device telemetry updates
         if (message.device_id) {
           // Dispatch custom event for components to listen to
           const event = new CustomEvent('websocket-message', { detail: message });
           window.dispatchEvent(event);
-          
-          // Update local state
-          setDeviceTelemetry(prev => {
-            const newMap = new Map(prev);
-            const existingData = newMap.get(message.device_id) || [];
-            const newDataPoint = {
-              timestamp: message.timestamp || new Date().toISOString(),
-              energy_watts: message.energy_watts,
-              device_id: message.device_id
-            };
-            
-            // Add new data point and keep only last 100 points
-            const updatedData = [...existingData, newDataPoint].slice(-100);
-            newMap.set(message.device_id, updatedData);
-            return newMap;
-          });
         }
         break;
         
@@ -334,17 +254,6 @@ export const WebSocketProvider = ({ children }) => {
   // Context value
   const value = {
     isConnected,
-    connectionStatus,
-    chatMessages,
-    onlineUsers,
-    energyUpdates,
-    deviceTelemetry,
-    connect,
-    disconnect,
-    sendMessage,
-    sendChatMessage,
-    subscribe,
-    unsubscribe,
     subscribeToDeviceTelemetry,
     unsubscribeFromDeviceTelemetry,
     MESSAGE_TYPES

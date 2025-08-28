@@ -15,6 +15,30 @@ from datetime import datetime, timedelta
 import json
 import getpass
 
+# Configuration
+AUTH_SERVICE_URL = "http://localhost:8000"
+TELEMETRY_API_URL = "http://localhost:8001/telemetry"
+
+def authenticate_user(email, password):
+    """Authenticate user and get access token."""
+    try:
+        login_data = {
+            "email": email,
+            "password": password
+        }
+        
+        response = requests.post(f"{AUTH_SERVICE_URL}/login", json=login_data, timeout=10)
+        
+        if response.status_code == 200:
+            token_data = response.json()
+            return token_data.get("access_token")
+        else:
+            print(f"❌ Authentication failed: {response.status_code} - {response.text}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Authentication request failed: {e}")
+        return None
+
 def get_user_devices_by_email(email):
     """Get devices for a specific user by email."""
     DB_CONFIG = {
@@ -123,7 +147,7 @@ def get_data_interval_input():
             print("\n\n👋 Goodbye!")
             exit(0)
 
-def generate_telemetry(user, devices, hours, interval_minutes):
+def generate_telemetry(user, devices, hours, interval_minutes, token):
     """Generate and send telemetry data to the telemetry service."""
     
     # Configuration
@@ -229,7 +253,13 @@ def generate_telemetry(user, devices, hours, interval_minutes):
             }
             
             try:
-                response = requests.post(TELEMETRY_API_URL, json=payload, timeout=5)
+                if not token:
+                    print("❌ No authentication token available. Skipping request.")
+                    failed_requests += 1
+                    continue
+                    
+                headers = {"Authorization": f"Bearer {token}"}
+                response = requests.post(TELEMETRY_API_URL, json=payload, headers=headers, timeout=5)
                 if response.status_code == 201 or response.status_code == 200:
                     successful_requests += 1
                 else:
@@ -294,6 +324,19 @@ def main():
             break
         print("❌ Please enter a valid email address")
     
+    # Get user password
+    password = getpass.getpass("Enter your password: ").strip()
+    
+    # Authenticate user
+    print("🔐 Authenticating with the system...")
+    token = authenticate_user(email, password)
+    if not token:
+        print("❌ Authentication failed. Please check your credentials and try again.")
+        print("💡 Make sure the authentication service is running on port 8000")
+        return
+    
+    print("✅ Authentication successful!")
+    
     # Find user and devices
     user, devices = get_user_devices_by_email(email)
     if not user or not devices:
@@ -315,7 +358,7 @@ def main():
     print(f"📈 Total data points: {(hours * 60 // interval_minutes) * len(devices)}")
     
     # Generate telemetry
-    generate_telemetry(user, devices, hours, interval_minutes)
+    generate_telemetry(user, devices, hours, interval_minutes, token)
 
 if __name__ == "__main__":
     try:

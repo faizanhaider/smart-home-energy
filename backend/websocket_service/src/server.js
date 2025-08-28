@@ -16,7 +16,7 @@ require('dotenv').config();
 // Configuration
 const PORT = process.env.PORT || 8003;
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:8000';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://127.0.0.1:8000';
 const TELEMETRY_SERVICE_URL = process.env.TELEMETRY_SERVICE_URL || 'http://localhost:8001';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
@@ -42,10 +42,6 @@ const userRooms = new Map(); // Map to store user room subscriptions
 
 // Message types
 const MESSAGE_TYPES = {
-    CHAT: 'chat',
-    ENERGY_UPDATE: 'energy_update',
-    DEVICE_STATUS: 'device_status',
-    DEVICE_TELEMETRY: 'device_telemetry',
     DEVICE_TELEMETRY_UPDATE: 'device_telemetry_update',
     SYSTEM_NOTIFICATION: 'system_notification',
     AUTHENTICATION: 'authentication',
@@ -64,27 +60,6 @@ async function initializeRedis() {
         redisSubscriber = redisClient.duplicate();
         await redisSubscriber.connect();
         
-        // Subscribe to Redis channels for real-time updates
-        await redisSubscriber.subscribe('energy_updates', (message) => {
-            try {
-                const data = JSON.parse(message);
-                console.log('🔍 Redis message received: energy_updates', data);
-                broadcastToChannel('energy_updates', data);
-            } catch (error) {
-                console.error('Error parsing Redis message:', error);
-            }
-        });
-        
-        await redisSubscriber.subscribe('device_status', (message) => {
-            try {
-                const data = JSON.parse(message);
-                console.log('🔍 Redis message received: device_status', data);
-                broadcastToChannel('device_status', data);
-            } catch (error) {
-                console.error('Error parsing Redis message:', error);
-            }
-        });
-        
         await redisSubscriber.subscribe('system_notifications', (message) => {
             try {
                 const data = JSON.parse(message);
@@ -99,7 +74,6 @@ async function initializeRedis() {
             try {
                 const data = JSON.parse(message);
                 console.log('🔍 Redis message received: device_telemetry', data);
-                broadcastToChannel('device_telemetry', data);
                 broadcastDeviceTelemetryUpdate(data.device_id, data.user_id, data);
 
             } catch (error) {
@@ -112,11 +86,31 @@ async function initializeRedis() {
     }
 }
 
-// JWT verification
-function verifyToken(token) {
+// JWT verification with auth service
+async function verifyToken(token) {
     try {
+        // First try to verify with auth service
+        const response = await fetch(`${AUTH_SERVICE_URL}/verify-token`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const userData = await response.json();
+            return {
+                sub: userData.user_id,
+                email: userData.email,
+                role: userData.role
+            };
+        }
+        
+        // Fallback to local verification if auth service is unavailable
         return jwt.verify(token, JWT_SECRET);
     } catch (error) {
+        console.error('Token verification failed:', error);
         return null;
     }
 }
@@ -205,18 +199,8 @@ async function handleMessage(connection, data) {
         case MESSAGE_TYPES.UNSUBSCRIBE:
             await handleUnsubscribe(connection, payload);
             break;
-            
-        case MESSAGE_TYPES.CHAT:
-            await handleChatMessage(connection, payload);
-            break;
         
-        case MESSAGE_TYPES.DEVICE_TELEMETRY_UPDATE:
-            await handleDeviceTelemetryUpdate(connection, payload);
-            break;
-
-        
-            
-        default:
+            default:
             sendMessage(connection.ws, {
                 type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
                 message: 'Unknown message type',
@@ -238,7 +222,7 @@ async function handleAuthentication(connection, payload) {
         return;
     }
     
-    const decoded = verifyToken(token);
+    const decoded = await verifyToken(token);
     if (!decoded) {
         sendMessage(connection.ws, {
             type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
@@ -270,6 +254,42 @@ async function handleAuthentication(connection, payload) {
 
 // Handle subscription
 async function handleSubscribe(connection, payload) {
+    const { token } = payload;
+    
+    if (!token) {
+        sendMessage(connection.ws, {
+            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
+            message: 'Authentication token required',
+            timestamp: new Date().toISOString()
+        });
+        return;
+    }
+    
+    const decoded = await verifyToken(token);
+    if (!decoded) {
+        sendMessage(connection.ws, {
+            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
+            message: 'Invalid authentication token',
+            timestamp: new Date().toISOString()
+        });
+        return;
+    }
+    
+    // Update connection with user info
+    connection.userId = decoded.sub;
+    connection.userEmail = decoded.email;
+    connection.isAuthenticated = true;
+
+    // Check if user is authenticated
+    if (!connection.isAuthenticated) {
+        sendMessage(connection.ws, {
+            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
+            message: 'Authentication required for subscriptions',
+            timestamp: new Date().toISOString()
+        });
+        return;
+    }
+    
     const { room, type, device_id, user_id } = payload;
     
     if (!room && !type) {
@@ -282,7 +302,7 @@ async function handleSubscribe(connection, payload) {
     }
     
     // Handle device telemetry subscription
-    if (type === 'DEVICE_TELEMETRY') {
+    if (type === 'device_telemetry_update') {
         if (!device_id || !user_id) {
             sendMessage(connection.ws, {
                 type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
@@ -343,6 +363,42 @@ async function handleSubscribe(connection, payload) {
 
 // Handle unsubscription
 async function handleUnsubscribe(connection, payload) {
+    const { token } = payload;
+    
+    if (!token) {
+        sendMessage(connection.ws, {
+            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
+            message: 'Authentication token required',
+            timestamp: new Date().toISOString()
+        });
+        return;
+    }
+    
+    const decoded = await verifyToken(token);
+    if (!decoded) {
+        sendMessage(connection.ws, {
+            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
+            message: 'Invalid authentication token',
+            timestamp: new Date().toISOString()
+        });
+        return;
+    }
+    
+    // Update connection with user info
+    connection.userId = decoded.sub;
+    connection.userEmail = decoded.email;
+    connection.isAuthenticated = true;
+    
+    // Check if user is authenticated
+    if (!connection.isAuthenticated) {
+        sendMessage(connection.ws, {
+            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
+            message: 'Authentication required for unsubscriptions',
+            timestamp: new Date().toISOString()
+        });
+        return;
+    }
+    
     const { room, type, device_id, user_id } = payload;
     
     if (!room && !type) {
@@ -355,7 +411,7 @@ async function handleUnsubscribe(connection, payload) {
     }
     
     // Handle device telemetry unsubscription
-    if (type === 'DEVICE_TELEMETRY') {
+    if (type === 'device_telemetry_update') {
         if (!device_id || !user_id) {
             sendMessage(connection.ws, {
                 type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
@@ -399,44 +455,6 @@ async function handleUnsubscribe(connection, payload) {
     }
 }
 
-// Handle chat messages
-async function handleChatMessage(connection, payload) {
-    const { message, room = 'general' } = payload;
-    
-    if (!message || !message.trim()) {
-        sendMessage(connection.ws, {
-            type: MESSAGE_TYPES.SYSTEM_NOTIFICATION,
-            message: 'Message content required',
-            timestamp: new Date().toISOString()
-        });
-        return;
-    }
-    
-    const chatMessage = {
-        type: MESSAGE_TYPES.CHAT,
-        message: message.trim(),
-        userId: connection.userId,
-        userEmail: connection.userEmail,
-        timestamp: new Date().toISOString(),
-        messageId: uuidv4()
-    };
-    
-    // Broadcast to room
-    broadcastToRoom(room, chatMessage);
-    
-    // Store in Redis for persistence
-    if (redisClient) {
-        try {
-            await redisClient.lPush(`chat:${room}`, JSON.stringify(chatMessage));
-            await redisClient.lTrim(`chat:${room}`, 0, 99); // Keep last 100 messages
-        } catch (error) {
-            console.error('Error storing chat message in Redis:', error);
-        }
-    }
-    
-    console.log(`💬 Chat message in ${room}: ${connection.userEmail}: ${message}`);
-}
-
 // Room management
 function addToRoom(room, connectionId) {
     if (!userRooms.has(room)) {
@@ -476,11 +494,6 @@ function broadcastToChannel(channel, message) {
     });
 }
 
-function broadcastToUser(userId, message) {
-    const userRoom = `user:${userId}`;
-    broadcastToRoom(userRoom, message);
-}
-
 // Get device telemetry from Redis cache
 async function getDeviceTelemetryFromCache(deviceId, userId) {
     if (!redisClient) return null;
@@ -507,15 +520,6 @@ async function broadcastDeviceTelemetryUpdate(deviceId, userId, telemetryData) {
         energy_watts: telemetryData.energy_watts,
         timestamp: telemetryData.timestamp || new Date().toISOString()
     });
-    
-    // Also broadcast to general energy updates room
-    broadcastToRoom('energy_updates', {
-        type: MESSAGE_TYPES.ENERGY_UPDATE,
-        device_id: deviceId,
-        user_id: userId,
-        energy_watts: telemetryData.energy_watts,
-        timestamp: telemetryData.timestamp || new Date().toISOString()
-    });
 }
 
 // Utility functions
@@ -523,14 +527,6 @@ function sendMessage(ws, message) {
     if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(message));
     }
-}
-
-function broadcastToAll(message) {
-    connections.forEach(connection => {
-        if (connection.ws.readyState === WebSocket.OPEN) {
-            sendMessage(connection.ws, message);
-        }
-    });
 }
 
 // Health check endpoint

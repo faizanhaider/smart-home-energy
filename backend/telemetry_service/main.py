@@ -6,7 +6,7 @@ import os
 import uuid
 import json
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Dict
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -19,6 +19,7 @@ import numpy as np
 
 from shared.database.connection import get_db, create_tables
 from shared.models import Device, Telemetry, User
+from shared.utils.auth import get_current_user_from_token
 
 # Configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
@@ -164,7 +165,7 @@ async def validate_device_access(db: Session, device_id: str, user_id: str) -> D
             detail="Device not found"
         )
     
-    if device.user_id != user_id:
+    if str(device.user_id) != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this device"
@@ -188,21 +189,17 @@ async def health_check():
 @app.post("/", response_model=TelemetryResponse, status_code=status.HTTP_201_CREATED)
 async def create_telemetry(
     telemetry_data: TelemetryData,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Dict = Depends(get_current_user_from_token)
 ):
     """Create a single telemetry data point."""
     # Validate device exists
-    device = await get_device_info(db, telemetry_data.device_id)
-    if not device:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Device not found"
-        )
+    device = await validate_device_access(db, telemetry_data.device_id, current_user["user_id"])
     
     # Create telemetry record
     db_telemetry = Telemetry(
         id=str(uuid.uuid4()),
-        device_id=telemetry_data.device_id,
+        device_id=device.id,
         timestamp=telemetry_data.timestamp,
         energy_watts=telemetry_data.energy_watts
     )
@@ -249,6 +246,7 @@ async def create_telemetry(
 @app.post("/batch", response_model=List[TelemetryResponse], status_code=status.HTTP_201_CREATED)
 async def create_telemetry_batch(
     telemetry_batch: TelemetryBatch,
+    current_user: Dict = Depends(get_current_user_from_token),
     db: Session = Depends(get_db)
 ):
     """Create multiple telemetry data points in a batch."""
@@ -270,6 +268,15 @@ async def create_telemetry_batch(
             detail=f"Devices not found: {missing_devices}"
         )
     
+    # Since all devices have the same user_id and it matches current_user, we can optionally assert this for safety.
+    # Get the user_id from the first device (if any) and check it matches current_user
+    if devices:
+        user_id = str(devices[0].user_id)
+        if user_id != str(current_user["user_id"]):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to these devices"
+            )
     # Create telemetry records
     telemetry_records = []
     for item in telemetry_batch.data:
@@ -329,19 +336,13 @@ async def get_device_telemetry(
     device_id: str,
     hours: int = 24,
     limit: int = 1000,
+    current_user: Dict = Depends(get_current_user_from_token),
     db: Session = Depends(get_db)
 ):
     """Get telemetry data for a specific device."""
-    # Validate device exists
-    device = await get_device_info(db, device_id)
-    if not device:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Device not found"
-        )
-    
+    device = await validate_device_access(db, device_id, current_user["user_id"])
     # Get telemetry data
-    telemetry_data = Telemetry.get_device_telemetry(db, device_id, hours, limit)
+    telemetry_data = Telemetry.get_device_telemetry(db, device.id, hours, limit)
     return telemetry_data
 
 
@@ -349,16 +350,13 @@ async def get_device_telemetry(
 async def get_device_summary(
     device_id: str,
     hours: int = 24,
+    current_user: Dict = Depends(get_current_user_from_token),
     db: Session = Depends(get_db)
 ):
     """Get energy consumption summary for a specific device."""
     # Validate device exists
-    device = await get_device_info(db, device_id)
-    if not device:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Device not found"
-        )
+    
+    device = await validate_device_access(db, device_id, current_user["user_id"])
     
     # Get summary data
     summary = device.get_energy_consumption_summary(db, hours)
@@ -383,19 +381,15 @@ async def get_device_summary(
 async def get_device_hourly_consumption(
     device_id: str,
     hours: int = 24,
+    current_user: Dict = Depends(get_current_user_from_token),
     db: Session = Depends(get_db)
 ):
     """Get hourly energy consumption for a device."""
     # Validate device exists
-    device = await get_device_info(db, device_id)
-    if not device:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Device not found"
-        )
+    device = await validate_device_access(db, device_id, current_user["user_id"])
     
     # Get hourly data
-    hourly_data = Telemetry.get_hourly_consumption(db, device_id, hours)
+    hourly_data = Telemetry.get_hourly_consumption(db, device.id, hours)
     return hourly_data
 
 
@@ -403,8 +397,15 @@ async def get_device_hourly_consumption(
 async def get_user_devices_summary(
     user_id: str,
     hours: int = 24,
+    current_user: Dict = Depends(get_current_user_from_token),
     db: Session = Depends(get_db)
 ):
+
+    if current_user["user_id"] != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden"
+        )
     """Get energy consumption summary for all user devices."""
     # Get user devices
     devices = db.query(Device).filter(Device.user_id == user_id).all()
@@ -439,15 +440,21 @@ async def get_user_devices_summary(
 async def get_user_summary(
     user_id: str,
     hours: int = 24,
+    current_user: Dict = Depends(get_current_user_from_token),
     db: Session = Depends(get_db)
 ):
+    if current_user["user_id"] != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden"
+        )
     """Get overall energy consumption summary for a user."""
     # Get user devices summary
-    devices_summary = await get_user_devices_summary(user_id, hours, db)
+    devices_summary = await get_user_devices_summary(user_id,hours,current_user, db)
     
     if not devices_summary:
         return UserDevicesSummary(
-            user_id=user_id,
+            user_id=current_user["user_id"],
             total_energy=0,
             average_power=0,
             peak_power=0,
@@ -472,7 +479,7 @@ async def get_user_summary(
     peak_power = max(device.peak_power for device in devices_summary) if devices_summary else 0
     
     return UserDevicesSummary(
-        user_id=user_id,
+        user_id=current_user["user_id"],
         total_energy=total_energy,
         average_power=round(average_power, 2),
         peak_power=peak_power,
@@ -486,16 +493,12 @@ async def get_user_summary(
 async def delete_device_telemetry(
     device_id: str,
     hours: int = 24,
+    current_user: Dict = Depends(get_current_user_from_token),
     db: Session = Depends(get_db)
 ):
     """Delete telemetry data for a device (within specified hours)."""
     # Validate device exists
-    device = await get_device_info(db, device_id)
-    if not device:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Device not found"
-        )
+    device = await validate_device_access(db, device_id, current_user["user_id"])
     
     # Calculate cutoff time
     cutoff_time = datetime.utcnow() - timedelta(hours=hours)
@@ -503,7 +506,7 @@ async def delete_device_telemetry(
     # Delete telemetry data
     deleted_count = db.query(Telemetry).filter(
         and_(
-            Telemetry.device_id == device_id,
+            Telemetry.device_id == device.id,
             Telemetry.timestamp >= cutoff_time
         )
     ).delete()

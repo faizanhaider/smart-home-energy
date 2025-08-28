@@ -3,7 +3,28 @@
  * Handles communication with the telemetry service backend
  */
 
-const TELEMETRY_SERVICE_URL = 'http://localhost:8001';
+import axios from 'axios';
+
+const TELEMETRY_SERVICE_URL = process.env.REACT_APP_TELEMETRY_API_URL || 'http://localhost:8001';
+
+// Helper function to get auth token from localStorage
+const getAuthToken = () => {
+  return localStorage.getItem('token');
+};
+
+// Helper function to create axios instance with auth headers
+const createAuthenticatedRequest = () => {
+  const token = getAuthToken();
+  const config = {
+    headers: {}
+  };
+  
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  
+  return config;
+};
 
 class TelemetryService {
   /**
@@ -14,16 +35,12 @@ class TelemetryService {
    */
   static async getUserDevicesSummary(userId, hours = 24) {
     try {
-      const response = await fetch(
-        `${TELEMETRY_SERVICE_URL}/user/${userId}/devices?hours=${hours}`
+      const response = await axios.get(
+        `${TELEMETRY_SERVICE_URL}/user/${userId}/devices?hours=${hours}`,
+        createAuthenticatedRequest()
       );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
+      return response.data;
     } catch (error) {
       console.error('Error fetching user devices summary:', error);
       throw error;
@@ -38,16 +55,12 @@ class TelemetryService {
    */
   static async getUserSummary(userId, hours = 24) {
     try {
-      const response = await fetch(
-        `${TELEMETRY_SERVICE_URL}/user/${userId}/summary?hours=${hours}`
+      const response = await axios.get(
+        `${TELEMETRY_SERVICE_URL}/user/${userId}/summary?hours=${hours}`,
+        createAuthenticatedRequest()
       );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
+      return response.data;
     } catch (error) {
       console.error('Error fetching user summary:', error);
       throw error;
@@ -61,14 +74,12 @@ class TelemetryService {
    */
   static async getDeviceTelemetry(deviceId) {
     try {
-      const response = await fetch(`${TELEMETRY_SERVICE_URL}/device/${deviceId}`);
+      const response = await axios.get(
+        `${TELEMETRY_SERVICE_URL}/device/${deviceId}`,
+        createAuthenticatedRequest()
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
+      return response.data;
     } catch (error) {
       console.error('Error fetching device telemetry:', error);
       throw error;
@@ -83,14 +94,12 @@ class TelemetryService {
    */
   static async getDeviceTelemetryWithTimeFilter(deviceId, hours = 168) {
     try {
-      const response = await fetch(`${TELEMETRY_SERVICE_URL}/device/${deviceId}?hours=${hours}`);
+      const response = await axios.get(
+        `${TELEMETRY_SERVICE_URL}/device/${deviceId}?hours=${hours}`,
+        createAuthenticatedRequest()
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
+      return response.data;
     } catch (error) {
       console.error('Error fetching device telemetry with time filter:', error);
       throw error;
@@ -104,14 +113,12 @@ class TelemetryService {
    */
   static async getDeviceSummary(deviceId) {
     try {
-      const response = await fetch(`${TELEMETRY_SERVICE_URL}/device/${deviceId}/summary`);
+      const response = await axios.get(
+        `${TELEMETRY_SERVICE_URL}/device/${deviceId}/summary`,
+        createAuthenticatedRequest()
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
+      return response.data;
     } catch (error) {
       console.error('Error fetching device summary:', error);
       throw error;
@@ -125,14 +132,12 @@ class TelemetryService {
    */
   static async getDeviceHourlyData(deviceId) {
     try {
-      const response = await fetch(`${TELEMETRY_SERVICE_URL}/device/${deviceId}/hourly`);
+      const response = await axios.get(
+        `${TELEMETRY_SERVICE_URL}/device/${deviceId}/hourly`,
+        createAuthenticatedRequest()
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
+      return response.data;
     } catch (error) {
       console.error('Error fetching device hourly data:', error);
       throw error;
@@ -145,8 +150,8 @@ class TelemetryService {
    */
   static async checkHealth() {
     try {
-      const response = await fetch(`${TELEMETRY_SERVICE_URL}/health`);
-      return response.ok;
+      const response = await axios.get(`${TELEMETRY_SERVICE_URL}/health`);
+      return response.status === 200;
     } catch (error) {
       console.error('Error checking telemetry service health:', error);
       return false;

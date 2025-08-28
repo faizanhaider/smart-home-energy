@@ -28,6 +28,7 @@ load_dotenv()
 
 from shared.database.connection import get_db, create_tables
 from shared.models import ChatHistory, User, Device, Telemetry
+from shared.utils.auth import get_current_user_from_token, get_current_user_id, require_admin
 
 # Download NLTK data
 try:
@@ -731,8 +732,15 @@ async def health_check():
 @app.post("/query", response_model=ChatResponse)
 async def process_chat_query(
     chat_query: ChatQuery,
+    current_user: Dict = Depends(get_current_user_from_token),
     db: Session = Depends(get_db)
 ):
+    if current_user['user_id'] != str(chat_query.user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden"
+        )
+
     """Process a natural language query and return a structured response."""
     start_time = time.time()
     
@@ -787,7 +795,7 @@ async def process_chat_query(
     # Create chat history record
     chat_record = ChatHistory(
         id=uuid.uuid4(),
-        user_id=chat_query.user_id or uuid.uuid4(),
+        user_id=current_user["user_id"],
         question=chat_query.question,
         response=result.dict(),
         intent=intent_result["intent"],
@@ -804,13 +812,13 @@ async def process_chat_query(
 
 @app.get("/history", response_model=List[ChatResponse])
 async def get_chat_history(
-    user_id: str,
     limit: int = 50,
     offset: int = 0,
+    current_user: Dict = Depends(get_current_user_from_token),
     db: Session = Depends(get_db)
 ):
-    """Get chat history for a user."""
-    chat_history = ChatHistory.get_user_chat_history(db, user_id, limit, offset)
+    """Get chat history for the current user."""
+    chat_history = ChatHistory.get_user_chat_history(db, current_user["user_id"], limit, offset)
     return chat_history
 
 

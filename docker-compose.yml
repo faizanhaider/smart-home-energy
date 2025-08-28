@@ -80,6 +80,7 @@ services:
       PORT: 8001
       DATABASE_URL: postgresql://smart_home_user:smart_home_password@postgres:5432/smart_home_energy
       REDIS_URL: redis://redis:6379
+      AUTH_SERVICE_URL: http://auth-service:8000
     depends_on:
       postgres:
         condition: service_healthy

@@ -326,11 +326,34 @@ async def login_user(user_credentials: UserLogin, db: Session = Depends(get_db))
 
 
 @app.post("/logout")
-async def logout_user(current_user: User = Depends(get_current_user)):
+async def logout_user(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
     """Logout user by blacklisting their token."""
-    # This would require storing the token in the request context
-    # For now, we'll just return success
-    return {"message": "Successfully logged out"}
+    try:
+        # Extract token from Authorization header
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            
+            # Blacklist token in Redis
+            if redis_client:
+                try:
+                    # Store token in blacklist with expiration
+                    await redis_client.setex(
+                        f"blacklist:{token}",
+                        ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # Same as token expiration
+                        str(current_user.id)
+                    )
+                    print(f"Token blacklisted for user {current_user.id}")
+                except Exception as e:
+                    print(f"Failed to blacklist token: {e}")
+        
+        return {"message": "Successfully logged out"}
+    except Exception as e:
+        print(f"Logout error: {str(e)}")
+        return {"message": "Successfully logged out"}
 
 
 @app.get("/profile", response_model=UserResponse)
@@ -364,6 +387,106 @@ async def update_user_profile(
             pass
     
     return current_user
+
+
+@app.post("/verify-token")
+async def verify_token(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Verify JWT token and return user data."""
+    try:
+        # Extract token from Authorization header
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        token = auth_header.split(" ")[1]
+        
+        # Decode and verify token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Check Redis cache first
+        if redis_client:
+            try:
+                user_id_str = str(user_id) if hasattr(user_id, 'hex') else user_id
+                cached_user = await redis_client.get(f"user:{user_id_str}")
+                if cached_user:
+                    import json
+                    user_data = json.loads(cached_user)
+                    return {
+                        "user_id": user_data["id"],
+                        "email": user_data["email"],
+                        "role": user_data["role"],
+                        "is_active": user_data["is_active"],
+                        "sub": user_data["id"]
+                    }
+            except Exception:
+                pass
+        
+        # Get user from database
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Inactive user",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Check if token is blacklisted in Redis
+        if redis_client:
+            try:
+                blacklisted = await redis_client.get(f"blacklist:{token}")
+                if blacklisted:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Token has been revoked",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+            except Exception:
+                pass
+        
+        return {
+            "user_id": str(user.id),
+            "email": user.email,
+            "role": user.role,
+            "is_active": user.is_active,
+            "sub": str(user.id)
+        }
+        
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Token verification error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during token verification"
+        )
 
 
 @app.get("/users", response_model=list[UserResponse])
