@@ -38,6 +38,38 @@ docker-compose up -d
 # WebSocket: ws://localhost:8003
 ```
 
+#### Option 2: Local Development
+```bash
+# Clone and setup
+git clone git@github.com:faizanhaider/smart-home-energy.git
+cd smart-home-energy
+
+# Setup shared dependencies (required for local development)
+cd backend
+# Copy shared folder to each service for local development
+cp -r shared auth_service/
+cp -r shared chat_service/
+cp -r shared telemetry_service/
+
+# Setup Python virtual environments for each service
+cd auth_service && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+cd ../chat_service && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+cd ../telemetry_service && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+
+# Start services individually (in separate terminals)
+cd auth_service && source venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000
+cd chat_service && source venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8002
+cd telemetry_service && source venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8001
+
+# Start WebSocket service
+cd websocket_service && yarn install && yarn start
+
+# Start frontend
+cd frontend && npm install && npm start
+```
+
+**Note**: The shared folder contains common models, database connections, and utilities that are required by all backend services. Docker automatically copies these files during container creation, but for local development, you need to manually copy the shared folder to each service directory.
+
 ### Generate Sample Data
 ```bash
 # Run the telemetry simulation script

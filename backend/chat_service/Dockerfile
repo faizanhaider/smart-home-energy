@@ -26,6 +26,9 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Download NLTK data
 RUN python -c "import nltk; nltk.download('punkt')"
 
+# Copy shared dependencies first (from parent directory)
+COPY ../shared ./shared
+
 # Copy application code
 COPY . .
 
