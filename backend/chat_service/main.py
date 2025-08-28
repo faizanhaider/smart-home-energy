@@ -21,7 +21,7 @@ from textblob import TextBlob
 import nltk
 import openai
 from openai import OpenAI
-
+from sqlalchemy import func, extract
 # Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv()
@@ -39,7 +39,7 @@ except LookupError:
 # Configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:8000")
-TELEMETRY_SERVICE_URL = os.getenv("TELEMETRY_SERVICE_URL", "http://localhost:8001")
+TELEMETRY_SERVICE_URL = os.getenv("TELEMETRY_SERVICE_URL", "http://127.0.0.1:8001")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 ENABLE_OPENAI = os.getenv("ENABLE_OPENAI", "true").lower() == "true"
@@ -119,7 +119,6 @@ async def shutdown_event():
     # OpenAI client doesn't need explicit cleanup
     global openai_client
     openai_client = None
-
 
 # Natural Language Processing Functions
 class QueryIntent:
@@ -407,6 +406,9 @@ async def get_device_by_name(db: Session, user_id: str, device_name: str) -> Opt
     """Find device by name for a specific user."""
     devices = await get_user_devices(db, user_id)
     
+    if device_name is None:
+        return None
+    
     # Simple fuzzy matching
     device_name_lower = device_name.lower()
     for device in devices:
@@ -415,38 +417,109 @@ async def get_device_by_name(db: Session, user_id: str, device_name: str) -> Opt
     
     return None
 
+async def get_telemetry_from_db(db: Session, device_id: str, hours: int) -> List[Telemetry]:
+    """
+    Retrieve telemetry records for a device from the database for the past `hours` hours.
+    """
+    since_time = datetime.utcnow() - timedelta(hours=hours)
+    return (
+        db.query(Telemetry)
+        .filter(
+            Telemetry.device_id == device_id,
+            Telemetry.timestamp >= since_time
+        )
+        .order_by(Telemetry.timestamp.desc())
+        .all()
+    )
 
-async def query_telemetry_service(device_id: str, hours: int) -> Dict[str, Any]:
-    """Query telemetry service for device data."""
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{TELEMETRY_SERVICE_URL}/device/{device_id}/summary",
-                params={"hours": hours}
-            )
-            if response.status_code == 200:
-                return response.json()
-        except Exception as e:
-            print(f"Error querying telemetry service: {e}")
-    
-    return {}
 
 
 async def get_user_summary(db: Session, user_id: str, hours: int) -> Dict[str, Any]:
-    """Get overall user energy consumption summary."""
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{TELEMETRY_SERVICE_URL}/user/{user_id}/summary",
-                params={"hours": hours}
-            )
-            if response.status_code == 200:
-                return response.json()
-        except Exception as e:
-            print(f"Error querying telemetry service: {e}")
-    
-    return {}
+    """Get overall user energy consumption summary using direct DB queries."""
+    since_time = datetime.utcnow() - timedelta(hours=hours)
+    devices = db.query(Device).filter(Device.user_id == user_id).all()
+    if not devices:
+        return {}
 
+    device_ids = [device.id for device in devices]
+    telemetry_query = (
+        db.query(
+            Telemetry.device_id,
+            func.sum(Telemetry.energy_watts).label("total_energy"),
+            func.avg(Telemetry.energy_watts).label("average_power"),
+            func.max(Telemetry.energy_watts).label("peak_power"),
+            func.count(Telemetry.id).label("data_points")
+        )
+        .filter(
+            Telemetry.device_id.in_(device_ids),
+            Telemetry.timestamp >= since_time
+        )
+        .group_by(Telemetry.device_id)
+        .all()
+    )
+
+    devices_summary = []
+    total_energy = 0
+    total_data_points = 0
+    for row in telemetry_query:
+        device = next((d for d in devices if d.id == row.device_id), None)
+        if not device:
+            continue
+        device_summary = {
+            "device_id": str(row.device_id),
+            "device_name": device.name,
+            "device_type": device.device_type,
+            "total_energy": float(row.total_energy or 0),
+            "average_power": float(row.average_power or 0),
+            "peak_power": float(row.peak_power or 0),
+            "data_points": int(row.data_points or 0)
+        }
+        devices_summary.append(device_summary)
+        total_energy += float(row.total_energy or 0)
+        total_data_points += int(row.data_points or 0)
+
+    result = {
+        "user_id": str(user_id),
+        "total_energy": total_energy,
+        "total_data_points": total_data_points,
+        "devices": devices_summary,
+        "time_period_hours": hours
+    }
+    return result
+
+async def get_device_hourly_consumption(db: Session, device_id: str, hours: int) -> list:
+            """
+            Retrieve hourly energy consumption for a device over the specified number of hours.
+            Returns a list of dicts: [{"hour": "2024-06-10T13:00:00", "energy": 12.5}, ...]
+            """
+            end_time = datetime.utcnow()
+            start_time = end_time - timedelta(hours=hours)
+
+            # Query telemetry data grouped by hour
+            results = (
+                db.query(
+                    func.date_trunc('hour', Telemetry.timestamp).label('hour'),
+                    func.sum(Telemetry.energy_watts).label('energy')
+                )
+                .filter(
+                    Telemetry.device_id == device_id,
+                    Telemetry.timestamp >= start_time,
+                    Telemetry.timestamp <= end_time
+                )
+                .group_by(func.date_trunc('hour', Telemetry.timestamp))
+                .order_by(func.date_trunc('hour', Telemetry.timestamp))
+                .all()
+            )
+
+            # Format results
+            hourly_data = [
+                {
+                    "hour": row.hour.isoformat(),
+                    "energy": float(row.energy) if row.energy is not None else 0.0
+                }
+                for row in results
+            ]
+            return hourly_data
 
 # Query processing functions
 async def process_device_energy_query(
@@ -470,7 +543,7 @@ async def process_device_energy_query(
         )
     
     # Get device telemetry data
-    telemetry_data = await query_telemetry_service(device.id, hours)
+    telemetry_data = await get_telemetry_from_db(db, device.id, hours)
     
     if not telemetry_data:
         return QueryResult(
@@ -485,10 +558,11 @@ async def process_device_energy_query(
     # Format response
     time_period = f"last {hours} hours" if hours > 1 else "last hour"
     
+
     # Enhanced summary with insights
-    total_energy = telemetry_data.get('total_energy', 0)
-    avg_power = telemetry_data.get('average_power', 0)
-    peak_power = telemetry_data.get('peak_power', 0)
+    total_energy = sum(float(data.energy_watts) for data in telemetry_data) if telemetry_data else 0.0
+    avg_power = total_energy / len(telemetry_data)
+    peak_power = max(float(data.energy_watts) for data in telemetry_data) if telemetry_data else 0.0
     
     # Calculate energy efficiency insights
     efficiency_rating = "efficient" if avg_power < 100 else "moderate" if avg_power < 500 else "high consumption"
@@ -514,7 +588,7 @@ async def process_device_energy_query(
         "total_energy": total_energy,
         "average_power": avg_power,
         "peak_power": peak_power,
-        "data_points": telemetry_data.get('data_points', 0),
+        "data_points": len(telemetry_data),
         "efficiency_rating": efficiency_rating,
         "time_period_hours": hours
     }
@@ -570,7 +644,7 @@ async def process_device_comparison_query(
     return QueryResult(
         summary=summary,
         data={
-            "top_devices": devices,
+            "top_devices": [json.dumps(entry, default=str) for entry in devices],
             "total_energy": user_summary.get('total_energy', 0),
             "device_count": len(devices)
         }
@@ -647,7 +721,27 @@ async def process_energy_analysis_query(
         )
     
     # Get detailed device breakdown
-    devices_summary = await get_user_devices_summary(db, user_id, hours)
+    devices = await get_user_devices(db, user_id)
+    devices_summary = []
+    since_time = datetime.utcnow() - timedelta(hours=hours)
+    for device in devices:
+        telemetry = (
+            db.query(
+                func.sum(Telemetry.energy_watts).label("total_energy")
+            )
+            .filter(
+                Telemetry.device_id == device.id,
+                Telemetry.timestamp >= since_time
+            )
+            .first()
+        )
+        total_energy = telemetry.total_energy if telemetry and telemetry.total_energy else 0
+        devices_summary.append(
+            {
+                "device_name": device.name,
+                "total_energy": float(total_energy)
+            }
+        )
     
     if not devices_summary:
         return QueryResult(
@@ -660,25 +754,29 @@ async def process_energy_analysis_query(
     device_count = len(devices_summary)
     
     # Sort devices by energy consumption
-    sorted_devices = sorted(devices_summary, key=lambda x: x.total_energy, reverse=True)
+    sorted_devices = sorted(devices_summary, key=lambda x: x["total_energy"], reverse=True)
     
     # Calculate insights
     top_consumer = sorted_devices[0] if sorted_devices else None
     bottom_consumer = sorted_devices[-1] if sorted_devices else None
     
     # Energy efficiency analysis
-    high_consumption_devices = [d for d in sorted_devices if d.total_energy > 1000]
-    efficient_devices = [d for d in sorted_devices if d.total_energy < 100]
+    high_consumption_devices = [d for d in sorted_devices if d["total_energy"] > 1000]
+    efficient_devices = [d for d in sorted_devices if d["total_energy"] < 100]
     
     summary = f"Energy Analysis for the last {hours} hours:\n\n"
     summary += f"📊 Total Consumption: {total_energy:.2f} watts\n"
     summary += f"🔌 Active Devices: {device_count}\n"
     
     if top_consumer:
-        summary += f"🔥 Highest Consumer: {top_consumer.device_name} ({top_consumer.total_energy:.2f} watts)\n"
+        device_name = top_consumer["device_name"]
+        total_energy = top_consumer["total_energy"] 
+        summary += f"🔥 Highest Consumer: {device_name} ({total_energy:.2f} watts)\n" 
     
     if bottom_consumer:
-        summary += f"💡 Most Efficient: {bottom_consumer.device_name} ({bottom_consumer.total_energy:.2f} watts)\n"
+        device_name = bottom_consumer["device_name"]
+        total_energy = bottom_consumer["total_energy"]
+        summary += f"💡 Most Efficient: {device_name} ({total_energy:.2f} watts)\n"
     
     if high_consumption_devices:
         summary += f"⚠️  High Consumption Devices: {len(high_consumption_devices)}\n"
@@ -747,6 +845,7 @@ async def process_chat_query(
     # Detect intent
     intent_result = await QueryIntent.detect_intent(chat_query.question)
     
+
     # Process query based on intent
     if intent_result["intent"] == "device_energy":
         device_name = intent_result["entities"].get("device_name", "unknown")
@@ -794,7 +893,6 @@ async def process_chat_query(
     
     # Create chat history record
     chat_record = ChatHistory(
-        id=uuid.uuid4(),
         user_id=current_user["user_id"],
         question=chat_query.question,
         response=result.dict(),
