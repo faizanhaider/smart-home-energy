@@ -29,7 +29,7 @@ def add_sample_devices():
         print("✅ Connected to database successfully")
         
         # Get the first user (you can modify this to get a specific user)
-        cursor.execute("SELECT id, email FROM users LIMIT 1")
+        cursor.execute("SELECT id, email FROM users where email = 'admin@smarthome.com' LIMIT 1")
         user = cursor.fetchone()
         
         if not user:

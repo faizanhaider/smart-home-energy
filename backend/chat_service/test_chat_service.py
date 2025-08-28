@@ -3,15 +3,13 @@ Unit tests for the Chat Service
 """
 
 import pytest
-import asyncio
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, String, Column
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 import redis.asyncio as redis
-from datetime import datetime, timedelta
-import json
+from datetime import datetime
 import uuid
 # Import the app and models
 from main import app

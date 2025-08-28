@@ -4,6 +4,7 @@ Test script to verify authentication integration across all services.
 """
 
 import asyncio
+import uuid
 import httpx
 import json
 from typing import Dict, Any
@@ -22,10 +23,10 @@ async def test_auth_service():
         # Test health check
         response = await client.get(f"{AUTH_SERVICE_URL}/health")
         print(f"  Health check: {response.status_code}")
-        
+        email = f"testuser-{uuid.uuid4()}@example.com"
         # Test registration
         user_data = {
-            "email": "test@example.com",
+            "email": email,
             "password": "testpassword123",
             "first_name": "Test",
             "last_name": "User"
@@ -40,7 +41,7 @@ async def test_auth_service():
             
             # Test login
             login_data = {
-                "email": "test@example.com",
+                "email": email,
                 "password": "testpassword123"
             }
             
@@ -161,7 +162,7 @@ async def test_unauthenticated_access():
     
     async with httpx.AsyncClient() as client:
         # Test chat service without token
-        chat_data = {"question": "Test question"}
+        chat_data = {"question": "Test question", "user_id": "123e4567-e89b-12d3-a456-426614174000"}
         response = await client.post(f"{CHAT_SERVICE_URL}/query", json=chat_data)
         print(f"  Chat without auth: {response.status_code} (should be 401)")
         

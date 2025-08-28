@@ -14,8 +14,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 import redis.asyncio as redis
-import pandas as pd
-import numpy as np
 
 from shared.database.connection import get_db, create_tables
 from shared.models import Device, Telemetry, User

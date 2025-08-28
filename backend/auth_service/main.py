@@ -3,7 +3,6 @@ FastAPI Authentication Service for Smart Home Energy Monitoring.
 """
 
 import os
-import time
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Request
@@ -15,7 +14,6 @@ from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 import redis.asyncio as redis
-import httpx
 
 from shared.database.connection import get_db, create_tables
 from shared.models import User
