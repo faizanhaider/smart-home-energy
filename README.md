@@ -195,7 +195,6 @@ smart-home-energy/
 - Energy efficiency recommendations
 - Cost optimization algorithms
 
-## 📝 License
-
+## System design upgrade
 For a detailed architecture and design overview, see the [System Design](./System-Design.md) document.
 
