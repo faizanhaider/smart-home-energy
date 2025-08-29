@@ -16,7 +16,7 @@ require('dotenv').config();
 // Configuration
 const PORT = process.env.PORT || 8003;
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://127.0.0.1:8000';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:8000';
 const TELEMETRY_SERVICE_URL = process.env.TELEMETRY_SERVICE_URL || 'http://localhost:8001';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
