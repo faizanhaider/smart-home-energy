@@ -1,27 +1,27 @@
-Story,Task,Estimate min (hr),Estimate max (hr),Actual,Comment
-Project Setup,Architecture Design & Planning,1.5,2.5,2.5,Initial system design and service decomposition
-Project Setup,Project Structure & Dependencies,0.5,1,1.0,Create directory structure and package files
-Backend Foundation,Service Setup & Configuration,2,3,3.0,Base service structure for Auth, Telemetry, and Chat
-Backend Foundation,Database Schema Design,1.5,2.5,2.0,PostgreSQL models for users, devices, and telemetry
-Backend Foundation,Database Connection & Setup,1,1.5,1.0,PostgreSQL container and connection handling
-Auth Service,User Registration & Login,1.5,2.5,2.0,JWT implementation and user management
-Auth Service,Role Management & Security,1,1.5,1.0,User roles and authentication middleware
-Telemetry Service,Data Ingestion API,1.5,2.5,2.5,Endpoint for receiving device telemetry data
-Telemetry Service,Data Storage & Retrieval,1.5,2.5,2.0,Time-series data handling and queries
-Chat Service,Natural Language Processing,3,4,4.0,Intent recognition, OpenAI integration, and advanced query interpretation
-Chat Service,Query Execution & Response,2,3,3.0,Data querying, cost analysis, efficiency insights, and structured response generation
-API Development,OpenAPI Documentation,1,1.5,0.5,Swagger/OpenAPI spec generation
-API Development,Integration Testing,1,1.5,0,Service-to-service communication testing
-Frontend Foundation,React App Setup,1,1.5,1.5,Create React application with routing
-Frontend Foundation,Authentication UI,1.5,2,0,Login/register forms and JWT handling
-Frontend Foundation,Device Management UI,1.5,2.5,0,Device list and management interface
-Frontend Foundation,Energy Dashboard & Charts,2,3,0,Chart.js integration and data visualization
-Frontend Foundation,Chat Interface,1.5,2.5,0,Natural language input and response display
-DevOps,Docker Containerization,1,1.5,2.0,Dockerfiles and docker-compose setup
-DevOps,Service Orchestration,0.5,1,1.0,Service startup and networking
-DevOps,AWS Infrastructure,2,3,2.5,Terraform configuration and deployment scripts
-Testing,Unit Tests,1.5,2.5,0,Core logic testing for each service
-Testing,Integration Tests,1,1.5,0,End-to-end workflow testing
-Documentation,README & Setup Instructions,1,1.5,1.0,Clear project documentation
-Documentation,API Usage Examples,0.5,1,0.5,Sample queries and responses
-Total,,32,47,27.0,
+Story,Task,Estimate min (hr),Estimate max (hr),Actual,Comment,,,
+Project Setup,Architecture Design & Planning,1.5,2.5,2.5,Initial system design and service decomposition,,,
+Project Setup,Project Structure & Dependencies,0.5,1,1,Create directory structure and package files,,,
+Backend Foundation,Service Setup & Configuration,2,3,1,Base service structure for Auth,Telemetry,and Chat,
+Backend Foundation,Database Schema Design,1.5,2.5,2,PostgreSQL models for users,devices,and telemetry,
+Backend Foundation,Database Connection & Setup,1,1.5,1,PostgreSQL container and connection handling,,,
+Auth Service,User Registration & Login,1.5,2.5,1.5,JWT implementation and user management,,,
+Auth Service,Role Management & Security,1,1.5,1,User roles and authentication middleware,,,
+Telemetry Service,Data Ingestion API,1.5,2.5,1,Endpoint for receiving device telemetry data,,,
+Telemetry Service,Data Storage & Retrieval,1.5,2.5,1,Time-series data handling and queries,,,
+Chat Service,Natural Language Processing,3,4,1.5,Intent recognition,OpenAI integration,and advanced query interpretation,
+Chat Service,Query Execution & Response,2,3,1,Data querying,cost analysis,efficiency insights,and structured response generation
+API Development,OpenAPI Documentation,1,1.5,0.5,Swagger/OpenAPI spec generation,,,
+API Development,Integration Testing,1,1.5,0,Service-to-service communication testing,,,
+Frontend Foundation,React App Setup,1,1.5,1.5,Create React application with routing,,,
+Frontend Foundation,Authentication UI,1.5,2,0.5,Login/register forms and JWT handling,,,
+Frontend Foundation,Device Management UI,1.5,2.5,0.5,Device list and management interface,,,
+Frontend Foundation,Energy Dashboard & Charts,2,3,0.5,Chart.js integration and data visualization,,,
+Frontend Foundation,Chat Interface,1.5,2.5,0.5,Natural language input and response display,,,
+DevOps,Docker Containerization,1,1.5,1,Dockerfiles and docker-compose setup,,,
+DevOps,Service Orchestration,0.5,1,1,Service startup and networking,,,
+DevOps,AWS Infrastructure,2,3,0,Terraform configuration and deployment scripts,,,
+Testing,Unit Tests,1.5,2.5,1,Core logic testing for each service,,,
+Testing,Integration Tests,1,1.5,0.5,End-to-end workflow testing,,,
+Documentation,README & Setup Instructions,1,1.5,1,Clear project documentation,,,
+Documentation,API Usage Examples,0.5,1,0.5,Sample queries and responses,,,
+Total,,32,47,23.5,,,,
