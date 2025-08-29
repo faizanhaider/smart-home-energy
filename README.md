@@ -6,6 +6,8 @@ A comprehensive platform for monitoring smart home energy consumption through na
 
 The system is built as a microservices architecture with four main backend services:
 
+![System Architecture](system-design.png)
+
 - **Auth Service** (Port 8000): Handles user authentication, JWT tokens, and role management
 - **Telemetry Service** (Port 8001): Ingests and stores device energy consumption data
 - **Chat Service** (Port 8002): Processes natural language queries and returns structured responses
@@ -45,6 +47,7 @@ cd smart-home-energy
 # Build and start all services
 docker-compose up --build -d
 
+# Sometimes with different service dependencies we have to run above command again
 # The system will be available at:
 # Frontend: http://localhost:3000
 # Auth API: http://localhost:8000
@@ -91,7 +94,7 @@ cd frontend && npm install && npm start
 ```bash
 # Run the add sample devices script
 cd backend/telemetry_service
-python scripts/add_sample_devices
+python scripts/add_sample_devices.py
 # Run the telemetry simulation script
 cd backend/telemetry_service
 python scripts/generate_telemetry.py
