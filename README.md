@@ -21,14 +21,29 @@ The system is built as a microservices architecture with four main backend servi
 - Node.js 18+ (for local development)
 - Python 3.11+ (for backend services)
 
+### Environment Setup
+Before running the system, you need to create a `.env` file in the chat_service directory with the necessary environment variables like OpenAI api key:
+
+```bash
+# Create .env file from example
+cp backend/chat_service/env.example backend/chat_service/.env
+```
+
+**Note**: The `.env` file contains sensitive configuration like API keys and database credentials. Make sure to:
+- Never commit this file to version control
+- Use strong, unique passwords for production
+- Keep your API keys secure
+
 ### Running the System
+
+#### Option 1: Docker Compose (Recommended)
 ```bash
 # Clone and setup
 git clone git@github.com:faizanhaider/smart-home-energy.git
 cd smart-home-energy
 
-# Start all services
-docker-compose up -d
+# Build and start all services
+docker-compose up --build -d
 
 # The system will be available at:
 # Frontend: http://localhost:3000
@@ -37,6 +52,8 @@ docker-compose up -d
 # Chat API: http://localhost:8002
 # WebSocket: ws://localhost:8003
 ```
+
+**Note**: The `--build` flag ensures all Docker images are rebuilt with the latest code changes. Use this when you've made code modifications or are running for the first time.
 
 #### Option 2: Local Development
 ```bash
@@ -72,6 +89,9 @@ cd frontend && npm install && npm start
 
 ### Generate Sample Data
 ```bash
+# Run the add sample devices script
+cd backend/telemetry_service
+python scripts/add_sample_devices
 # Run the telemetry simulation script
 cd backend/telemetry_service
 python scripts/generate_telemetry.py
