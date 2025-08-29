@@ -197,4 +197,5 @@ smart-home-energy/
 
 ## 📝 License
 
-MIT License - see LICENSE file for details
+For a detailed architecture and design overview, see the [System Design](./System-Design.md) document.
+

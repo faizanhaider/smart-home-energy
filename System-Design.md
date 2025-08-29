@@ -328,36 +328,37 @@ app.get('/devices/:id/metrics/realtime', async (req,res) => {
 * **Flink Aggregation** — see Kinesis Data Analytics section.
 * **API Read Fallback** — see Analytics API section.
 
+```mermaid
 flowchart LR
     subgraph Devices
-        D[IoT Devices]
+        D["IoT Devices"]
     end
 
     subgraph Ingress
-        IOT[AWS IoT Core (MQTT)]
-        API[API Gateway + ALB (HTTP)]
+        IOT["AWS IoT Core (MQTT)"]
+        API["API Gateway + ALB (HTTP)"]
     end
 
     subgraph Stream
-        KDS[Kinesis Data Streams]
-        KF[Kinesis Firehose]
+        KDS["Kinesis Data Streams"]
+        KF["Kinesis Firehose"]
     end
 
     subgraph Analytics
-        KDA[Kinesis Data Analytics (Flink)]
-        Redis[(ElastiCache Redis)]
-        Timestream[(Timestream/DynamoDB)]
-        S3[(S3 Raw Storage)]
+        KDA["Kinesis Data Analytics (Flink)"]
+        Redis[("ElastiCache Redis")]
+        Timestream[("Timestream/DynamoDB")]
+        S3[("S3 Raw Storage")]
     end
 
     subgraph Alerts
-        EB[EventBridge]
-        SNS[SNS Notifications]
+        EB["EventBridge"]
+        SNS["SNS Notifications"]
     end
 
     subgraph API
-        APISVC[Analytics API / Dashboard]
-        PG[(Postgres - Device Metadata)]
+        APISVC["Analytics API / Dashboard"]
+        PG[("Postgres - Device Metadata")]
     end
 
     %% connections
@@ -376,3 +377,4 @@ flowchart LR
     APISVC --> Redis
     APISVC --> Timestream
     APISVC --> PG
+```
